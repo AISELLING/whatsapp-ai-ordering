@@ -29,14 +29,10 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [filter, setFilter] = useState('all')
 
   const fetchOrders = async () => {
-    setLoading(true)
-
-    const res = await fetch('/api/orders', {
-      cache: 'no-store',
-    })
-
+    const res = await fetch('/api/orders', { cache: 'no-store' })
     const data = await res.json()
 
     if (data.success) {
@@ -48,9 +44,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchOrders()
-
     const interval = setInterval(fetchOrders, 10000)
-
     return () => clearInterval(interval)
   }, [])
 
@@ -81,364 +75,567 @@ export default function DashboardPage() {
   const stats = useMemo(() => {
     const today = new Date().toDateString()
 
-    const todaysOrders = orders.filter((order) => {
-      if (!order.created_at) return false
-      return new Date(order.created_at).toDateString() === today
-    })
-
-    const paidOrders = orders.filter(
-      (order) => order.payment_status === 'paid'
+    const todaysOrders = orders.filter(
+      (order) =>
+        order.created_at &&
+        new Date(order.created_at).toDateString() === today
     )
 
+    const paidOrders = orders.filter((o) => o.payment_status === 'paid')
+    const pendingOrders = orders.filter((o) => o.payment_status !== 'paid')
+
     const todaysRevenue = todaysOrders
-      .filter((order) => order.payment_status === 'paid')
-      .reduce((sum, order) => sum + Number(order.subtotal || 0), 0)
+      .filter((o) => o.payment_status === 'paid')
+      .reduce((sum, o) => sum + Number(o.subtotal || 0), 0)
 
     const totalRevenue = paidOrders.reduce(
-      (sum, order) => sum + Number(order.subtotal || 0),
+      (sum, o) => sum + Number(o.subtotal || 0),
       0
     )
 
-    const newOrders = orders.filter(
-      (order) => (order.order_status || 'new') === 'new'
-    ).length
-
     return {
-      todaysOrders: todaysOrders.length,
-      totalOrders: orders.length,
-      paidOrders: paidOrders.length,
-      newOrders,
+      today: todaysOrders.length,
+      paid: paidOrders.length,
+      pending: pendingOrders.length,
+      total: orders.length,
       todaysRevenue,
       totalRevenue,
     }
   }, [orders])
 
-  const statusColor = (status?: string) => {
-    if (status === 'paid') return '#16a34a'
-    if (status === 'unpaid') return '#dc2626'
-    if (status === 'pending') return '#ca8a04'
-    return '#6b7280'
-  }
-
-  const orderStatusLabel = (status?: string) => {
-    if (status === 'accepted') return 'Accepted'
-    if (status === 'preparing') return 'Preparing'
-    if (status === 'completed') return 'Completed'
-    if (status === 'rejected') return 'Rejected'
-    return 'New'
-  }
+  const filteredOrders = orders.filter((order) => {
+    if (filter === 'all') return true
+    if (filter === 'paid') return order.payment_status === 'paid'
+    if (filter === 'pending') return order.payment_status !== 'paid'
+    return (order.order_status || 'new') === filter
+  })
 
   return (
-    <main
-      style={{
-        padding: 30,
-        fontFamily: 'Arial',
-        background: '#f5f5f5',
-        minHeight: '100vh',
-      }}
-    >
-      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <header
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 20,
-            alignItems: 'center',
-            marginBottom: 25,
-          }}
-        >
+    <main style={page}>
+      <aside style={sidebar}>
+        <div>
+          <div style={logoBox}>AI</div>
+          <h2 style={brand}>AI Ordering</h2>
+          <p style={brandSub}>WhatsApp commerce OS</p>
+        </div>
+
+        <nav style={nav}>
+          <a style={navActive} href="/dashboard">Orders</a>
+          <a style={navItem} href="/menu">Menu</a>
+          <a style={navItem} href="/menu-import">Import Menu</a>
+          <a style={navItem} href="/">Order Tester</a>
+        </nav>
+
+        <div style={sideFooter}>
+          <p style={{ margin: 0, color: '#9ca3af', fontSize: 12 }}>
+            Live system
+          </p>
+          <strong style={{ color: '#22c55e' }}>Online</strong>
+        </div>
+      </aside>
+
+      <section style={content}>
+        <header style={topBar}>
           <div>
-            <h1 style={{ margin: 0 }}>Orders Dashboard</h1>
-            <p style={{ marginTop: 6, color: '#555' }}>
-              Live WhatsApp AI orders, payments and kitchen status.
+            <p style={eyebrow}>Operations Dashboard</p>
+            <h1 style={title}>Live WhatsApp Orders</h1>
+            <p style={subtitle}>
+              Manage paid orders, kitchen flow, customers and revenue in real time.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            <a href="/" style={linkButton}>
-              Order Page
-            </a>
-            <a href="/menu" style={linkButton}>
-              Menu
-            </a>
-            <a href="/menu-import" style={linkButton}>
-              Import Menu
-            </a>
-          </div>
+          <button onClick={fetchOrders} style={refreshButton}>
+            Refresh
+          </button>
         </header>
 
-        <section
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: 15,
-            marginBottom: 25,
-          }}
-        >
-          <StatCard title="Today Orders" value={stats.todaysOrders} />
-          <StatCard title="New Orders" value={stats.newOrders} />
-          <StatCard title="Paid Orders" value={stats.paidOrders} />
-          <StatCard title="Today Revenue" value={`£${stats.todaysRevenue.toFixed(2)}`} />
-          <StatCard title="Total Revenue" value={`£${stats.totalRevenue.toFixed(2)}`} />
-          <StatCard title="All Orders" value={stats.totalOrders} />
+        <section style={statsGrid}>
+          <StatCard label="Today Revenue" value={`£${stats.todaysRevenue.toFixed(2)}`} accent />
+          <StatCard label="Total Revenue" value={`£${stats.totalRevenue.toFixed(2)}`} />
+          <StatCard label="Today Orders" value={stats.today} />
+          <StatCard label="Paid Orders" value={stats.paid} />
+          <StatCard label="Pending Payment" value={stats.pending} />
+          <StatCard label="Total Orders" value={stats.total} />
+        </section>
+
+        <section style={filterBar}>
+          {['all', 'paid', 'pending', 'new', 'accepted', 'preparing', 'completed', 'rejected'].map(
+            (item) => (
+              <button
+                key={item}
+                onClick={() => setFilter(item)}
+                style={filter === item ? filterActive : filterButton}
+              >
+                {item}
+              </button>
+            )
+          )}
         </section>
 
         {loading ? (
-          <p>Loading orders...</p>
-        ) : orders.length === 0 ? (
-          <div style={emptyBox}>
-            <h2>No orders yet</h2>
-            <p>When WhatsApp orders come in, they will appear here.</p>
+          <div style={emptyState}>Loading orders...</div>
+        ) : filteredOrders.length === 0 ? (
+          <div style={emptyState}>
+            <h2>No orders found</h2>
+            <p>Orders will appear here when customers order via WhatsApp.</p>
           </div>
         ) : (
-          <section style={{ display: 'grid', gap: 18 }}>
-            {orders.map((order) => (
-              <div key={order.id} style={orderCard}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 15,
-                    flexWrap: 'wrap',
-                    marginBottom: 15,
-                  }}
-                >
-                  <div>
-                    <h2 style={{ margin: 0 }}>
-                      Order #{order.id.slice(0, 8)}
-                    </h2>
-                    <p style={{ margin: '6px 0', color: '#555' }}>
-                      {order.created_at
-                        ? new Date(order.created_at).toLocaleString()
-                        : ''}
-                    </p>
-                    <p style={{ margin: '6px 0' }}>
-                      <strong>Customer:</strong>{' '}
-                      {order.customer_profile_name || 'WhatsApp Customer'}
-                    </p>
-                    <p style={{ margin: '6px 0' }}>
-                      <strong>Phone:</strong> {order.customer_phone || '—'}
-                    </p>
-                  </div>
-
-                  <div style={{ textAlign: 'right' }}>
-                    <div
-                      style={{
-                        ...badge,
-                        background: statusColor(order.payment_status),
-                      }}
-                    >
-                      {order.payment_status || 'pending'}
-                    </div>
-
-                    <div
-                      style={{
-                        ...badge,
-                        background: '#111827',
-                        marginTop: 8,
-                      }}
-                    >
-                      {orderStatusLabel(order.order_status)}
-                    </div>
-                  </div>
-                </div>
-
-                {order.customer_message && (
-                  <div style={messageBox}>
-                    <strong>Customer message:</strong>
-                    <p style={{ margin: '5px 0 0' }}>{order.customer_message}</p>
-                  </div>
-                )}
-
-                <div style={{ marginTop: 15 }}>
-                  <h3 style={{ marginBottom: 8 }}>Items</h3>
-
-                  {(order.items || []).map((item, index) => {
-                    const name = item.name || item.item || 'Item'
-                    const quantity = Number(item.quantity || 1)
-                    const lineTotal = Number(
-                      item.line_total || Number(item.unit_price || 0) * quantity
-                    )
-
-                    return (
-                      <div key={index} style={itemRow}>
-                        <span>
-                          {quantity} x {name}
-                          {item.notes ? ` (${item.notes})` : ''}
-                        </span>
-                        <strong>£{lineTotal.toFixed(2)}</strong>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                <div style={summaryRow}>
-                  <div>
-                    <strong>Order type:</strong> {order.order_type || '—'}
-                  </div>
-                  <div>
-                    <strong>Subtotal:</strong> £
-                    {Number(order.subtotal || 0).toFixed(2)}
-                  </div>
-                </div>
-
-                <div style={buttonRow}>
-                  <button
-                    onClick={() => updateStatus(order.id, 'accepted')}
-                    disabled={updatingId === order.id}
-                    style={button}
-                  >
-                    Accept
-                  </button>
-
-                  <button
-                    onClick={() => updateStatus(order.id, 'preparing')}
-                    disabled={updatingId === order.id}
-                    style={button}
-                  >
-                    Preparing
-                  </button>
-
-                  <button
-                    onClick={() => updateStatus(order.id, 'completed')}
-                    disabled={updatingId === order.id}
-                    style={greenButton}
-                  >
-                    Completed
-                  </button>
-
-                  <button
-                    onClick={() => updateStatus(order.id, 'rejected')}
-                    disabled={updatingId === order.id}
-                    style={redButton}
-                  >
-                    Reject
-                  </button>
-
-                  {order.stripe_checkout_url && (
-                    <a
-                      href={order.stripe_checkout_url}
-                      target="_blank"
-                      style={outlineButton}
-                    >
-                      Payment Link
-                    </a>
-                  )}
-                </div>
-              </div>
+          <section style={ordersGrid}>
+            {filteredOrders.map((order) => (
+              <OrderCard
+                key={order.id}
+                order={order}
+                updatingId={updatingId}
+                updateStatus={updateStatus}
+              />
             ))}
           </section>
         )}
-      </div>
+      </section>
     </main>
   )
 }
 
-function StatCard({ title, value }: { title: string; value: string | number }) {
+function OrderCard({
+  order,
+  updatingId,
+  updateStatus,
+}: {
+  order: Order
+  updatingId: string | null
+  updateStatus: (id: string, status: string) => void
+}) {
+  const paymentPaid = order.payment_status === 'paid'
+  const status = order.order_status || 'new'
+
   return (
-    <div style={statCard}>
-      <p style={{ margin: 0, color: '#666', fontSize: 14 }}>{title}</p>
-      <h2 style={{ margin: '8px 0 0', fontSize: 26 }}>{value}</h2>
+    <article style={orderCard}>
+      <div style={orderTop}>
+        <div>
+          <p style={orderNumber}>#{order.id.slice(0, 8).toUpperCase()}</p>
+          <h2 style={customerName}>
+            {order.customer_profile_name || 'WhatsApp Customer'}
+          </h2>
+          <p style={muted}>{order.customer_phone || 'No phone captured'}</p>
+        </div>
+
+        <div style={{ textAlign: 'right' }}>
+          <span style={paymentPaid ? paidBadge : pendingBadge}>
+            {paymentPaid ? 'Paid' : 'Pending'}
+          </span>
+          <br />
+          <span style={statusBadge(status)}>{status}</span>
+        </div>
+      </div>
+
+      <div style={metaRow}>
+        <span>{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</span>
+        <span>{order.order_type || '—'}</span>
+      </div>
+
+      {order.customer_message && (
+        <div style={messageBox}>
+          <strong>Message</strong>
+          <p>{order.customer_message}</p>
+        </div>
+      )}
+
+      <div style={itemsBox}>
+        {(order.items || []).map((item, index) => {
+          const name = item.name || item.item || 'Item'
+          const quantity = Number(item.quantity || 1)
+          const lineTotal = Number(
+            item.line_total || Number(item.unit_price || 0) * quantity
+          )
+
+          return (
+            <div key={index} style={itemLine}>
+              <span>
+                {quantity} × {name}
+                {item.notes ? <small> — {item.notes}</small> : null}
+              </span>
+              <strong>£{lineTotal.toFixed(2)}</strong>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={totalRow}>
+        <span>Total</span>
+        <strong>£{Number(order.subtotal || 0).toFixed(2)}</strong>
+      </div>
+
+      <div style={actions}>
+        <button
+          style={actionButton}
+          disabled={updatingId === order.id}
+          onClick={() => updateStatus(order.id, 'accepted')}
+        >
+          Accept
+        </button>
+        <button
+          style={actionButton}
+          disabled={updatingId === order.id}
+          onClick={() => updateStatus(order.id, 'preparing')}
+        >
+          Preparing
+        </button>
+        <button
+          style={completeButton}
+          disabled={updatingId === order.id}
+          onClick={() => updateStatus(order.id, 'completed')}
+        >
+          Complete
+        </button>
+        <button
+          style={rejectButton}
+          disabled={updatingId === order.id}
+          onClick={() => updateStatus(order.id, 'rejected')}
+        >
+          Reject
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string
+  value: string | number
+  accent?: boolean
+}) {
+  return (
+    <div style={accent ? statAccent : statCard}>
+      <p style={statLabel}>{label}</p>
+      <h2 style={statValue}>{value}</h2>
     </div>
   )
 }
 
+const page: React.CSSProperties = {
+  minHeight: '100vh',
+  display: 'flex',
+  background: '#0f172a',
+  color: '#111827',
+  fontFamily:
+    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Arial',
+}
+
+const sidebar: React.CSSProperties = {
+  width: 260,
+  background: '#020617',
+  color: 'white',
+  padding: 24,
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'space-between',
+  position: 'sticky',
+  top: 0,
+  height: '100vh',
+}
+
+const logoBox: React.CSSProperties = {
+  width: 48,
+  height: 48,
+  borderRadius: 14,
+  background: 'linear-gradient(135deg, #22c55e, #38bdf8)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontWeight: 900,
+  marginBottom: 14,
+}
+
+const brand: React.CSSProperties = {
+  margin: 0,
+  fontSize: 22,
+}
+
+const brandSub: React.CSSProperties = {
+  color: '#94a3b8',
+  marginTop: 6,
+  fontSize: 13,
+}
+
+const nav: React.CSSProperties = {
+  display: 'grid',
+  gap: 10,
+  marginTop: 35,
+}
+
+const navItem: React.CSSProperties = {
+  color: '#cbd5e1',
+  textDecoration: 'none',
+  padding: '12px 14px',
+  borderRadius: 12,
+  fontSize: 14,
+}
+
+const navActive: React.CSSProperties = {
+  ...navItem,
+  background: '#111827',
+  color: 'white',
+}
+
+const sideFooter: React.CSSProperties = {
+  borderTop: '1px solid #1e293b',
+  paddingTop: 18,
+}
+
+const content: React.CSSProperties = {
+  flex: 1,
+  padding: 28,
+  background: '#f8fafc',
+  minHeight: '100vh',
+}
+
+const topBar: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 20,
+  alignItems: 'center',
+  marginBottom: 24,
+}
+
+const eyebrow: React.CSSProperties = {
+  color: '#2563eb',
+  fontWeight: 800,
+  textTransform: 'uppercase',
+  letterSpacing: 1,
+  fontSize: 12,
+  margin: 0,
+}
+
+const title: React.CSSProperties = {
+  fontSize: 36,
+  margin: '6px 0',
+}
+
+const subtitle: React.CSSProperties = {
+  margin: 0,
+  color: '#64748b',
+}
+
+const refreshButton: React.CSSProperties = {
+  background: '#020617',
+  color: 'white',
+  border: 'none',
+  borderRadius: 12,
+  padding: '12px 18px',
+  cursor: 'pointer',
+  fontWeight: 700,
+}
+
+const statsGrid: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))',
+  gap: 14,
+  marginBottom: 18,
+}
+
 const statCard: React.CSSProperties = {
   background: 'white',
-  borderRadius: 14,
+  border: '1px solid #e2e8f0',
+  borderRadius: 18,
   padding: 18,
-  border: '1px solid #e5e7eb',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+  boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+}
+
+const statAccent: React.CSSProperties = {
+  ...statCard,
+  background: 'linear-gradient(135deg, #020617, #1e293b)',
+  color: 'white',
+}
+
+const statLabel: React.CSSProperties = {
+  margin: 0,
+  fontSize: 13,
+  color: '#64748b',
+}
+
+const statValue: React.CSSProperties = {
+  margin: '8px 0 0',
+  fontSize: 28,
+}
+
+const filterBar: React.CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  flexWrap: 'wrap',
+  marginBottom: 20,
+}
+
+const filterButton: React.CSSProperties = {
+  border: '1px solid #e2e8f0',
+  background: 'white',
+  borderRadius: 999,
+  padding: '9px 13px',
+  cursor: 'pointer',
+  textTransform: 'capitalize',
+}
+
+const filterActive: React.CSSProperties = {
+  ...filterButton,
+  background: '#020617',
+  color: 'white',
+  borderColor: '#020617',
+}
+
+const ordersGrid: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+  gap: 18,
 }
 
 const orderCard: React.CSSProperties = {
   background: 'white',
-  borderRadius: 16,
-  padding: 22,
-  border: '1px solid #e5e7eb',
-  boxShadow: '0 4px 14px rgba(0,0,0,0.05)',
+  border: '1px solid #e2e8f0',
+  borderRadius: 22,
+  padding: 20,
+  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
 }
 
-const badge: React.CSSProperties = {
-  display: 'inline-block',
-  color: 'white',
-  padding: '7px 12px',
-  borderRadius: 999,
-  fontSize: 13,
-  textTransform: 'capitalize',
-  fontWeight: 'bold',
-}
-
-const messageBox: React.CSSProperties = {
-  background: '#f9fafb',
-  border: '1px solid #e5e7eb',
-  borderRadius: 10,
-  padding: 12,
-}
-
-const itemRow: React.CSSProperties = {
+const orderTop: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
-  borderBottom: '1px solid #eee',
-  padding: '9px 0',
+  gap: 15,
 }
 
-const summaryRow: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  flexWrap: 'wrap',
-  gap: 10,
-  marginTop: 15,
-  paddingTop: 15,
-  borderTop: '2px solid #eee',
+const orderNumber: React.CSSProperties = {
+  margin: 0,
+  color: '#64748b',
+  fontSize: 12,
+  fontWeight: 800,
 }
 
-const buttonRow: React.CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  flexWrap: 'wrap',
-  marginTop: 18,
+const customerName: React.CSSProperties = {
+  margin: '5px 0',
+  fontSize: 20,
 }
 
-const button: React.CSSProperties = {
-  padding: '10px 14px',
-  border: 'none',
-  borderRadius: 8,
-  background: '#111827',
-  color: 'white',
-  cursor: 'pointer',
-}
-
-const greenButton: React.CSSProperties = {
-  ...button,
-  background: '#16a34a',
-}
-
-const redButton: React.CSSProperties = {
-  ...button,
-  background: '#dc2626',
-}
-
-const outlineButton: React.CSSProperties = {
-  padding: '10px 14px',
-  borderRadius: 8,
-  border: '1px solid #111827',
-  color: '#111827',
-  textDecoration: 'none',
-}
-
-const linkButton: React.CSSProperties = {
-  padding: '10px 12px',
-  borderRadius: 8,
-  background: '#111827',
-  color: 'white',
-  textDecoration: 'none',
+const muted: React.CSSProperties = {
+  margin: 0,
+  color: '#64748b',
   fontSize: 14,
 }
 
-const emptyBox: React.CSSProperties = {
+const paidBadge: React.CSSProperties = {
+  display: 'inline-block',
+  background: '#dcfce7',
+  color: '#166534',
+  border: '1px solid #bbf7d0',
+  padding: '7px 10px',
+  borderRadius: 999,
+  fontWeight: 800,
+  fontSize: 12,
+}
+
+const pendingBadge: React.CSSProperties = {
+  ...paidBadge,
+  background: '#fef9c3',
+  color: '#854d0e',
+  border: '1px solid #fde68a',
+}
+
+function statusBadge(status: string): React.CSSProperties {
+  const colours: Record<string, string> = {
+    new: '#2563eb',
+    accepted: '#7c3aed',
+    preparing: '#ea580c',
+    completed: '#16a34a',
+    rejected: '#dc2626',
+  }
+
+  return {
+    display: 'inline-block',
+    background: colours[status] || '#334155',
+    color: 'white',
+    padding: '7px 10px',
+    borderRadius: 999,
+    marginTop: 8,
+    fontWeight: 800,
+    fontSize: 12,
+    textTransform: 'capitalize',
+  }
+}
+
+const metaRow: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 10,
+  color: '#64748b',
+  fontSize: 13,
+  marginTop: 16,
+  borderTop: '1px solid #e2e8f0',
+  paddingTop: 14,
+  textTransform: 'capitalize',
+}
+
+const messageBox: React.CSSProperties = {
+  marginTop: 14,
+  background: '#f8fafc',
+  border: '1px solid #e2e8f0',
+  borderRadius: 14,
+  padding: 13,
+}
+
+const itemsBox: React.CSSProperties = {
+  marginTop: 14,
+}
+
+const itemLine: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 10,
+  padding: '9px 0',
+  borderBottom: '1px solid #f1f5f9',
+}
+
+const totalRow: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  marginTop: 14,
+  paddingTop: 14,
+  borderTop: '2px solid #0f172a',
+  fontSize: 18,
+}
+
+const actions: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, 1fr)',
+  gap: 10,
+  marginTop: 18,
+}
+
+const actionButton: React.CSSProperties = {
+  background: '#0f172a',
+  color: 'white',
+  border: 'none',
+  borderRadius: 12,
+  padding: '11px',
+  cursor: 'pointer',
+  fontWeight: 800,
+}
+
+const completeButton: React.CSSProperties = {
+  ...actionButton,
+  background: '#16a34a',
+}
+
+const rejectButton: React.CSSProperties = {
+  ...actionButton,
+  background: '#dc2626',
+}
+
+const emptyState: React.CSSProperties = {
   background: 'white',
-  borderRadius: 16,
-  padding: 30,
-  border: '1px solid #e5e7eb',
+  borderRadius: 22,
+  border: '1px solid #e2e8f0',
+  padding: 35,
+  textAlign: 'center',
+  color: '#64748b',
 }
