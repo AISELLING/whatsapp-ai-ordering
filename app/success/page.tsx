@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-export default function SuccessPage() {
+function SuccessContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get('session_id')
   const [status, setStatus] = useState('Updating order...')
@@ -11,7 +11,7 @@ export default function SuccessPage() {
   useEffect(() => {
     const markPaid = async () => {
       if (!sessionId) {
-        setStatus('Missing payment session.')
+        setStatus('Payment successful. No session ID found.')
         return
       }
 
@@ -39,5 +39,13 @@ export default function SuccessPage() {
       <p>{status}</p>
       <a href="/">← Back to order page</a>
     </main>
+  )
+}
+
+export default function SuccessPage() {
+  return (
+    <Suspense fallback={<p style={{ padding: 40 }}>Loading payment status...</p>}>
+      <SuccessContent />
+    </Suspense>
   )
 }
