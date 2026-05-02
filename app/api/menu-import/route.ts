@@ -6,6 +6,18 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
+async function getDemoBusiness() {
+  const { data, error } = await supabaseAdmin
+    .from('businesses')
+    .select('id, name, business_type')
+    .eq('slug', 'demo-food-shop')
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  return data
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -18,6 +30,8 @@ export async function POST(req: Request) {
       )
     }
 
+    const business = await getDemoBusiness()
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       response_format: { type: 'json_object' },
@@ -25,10 +39,13 @@ export async function POST(req: Request) {
         {
           role: 'system',
           content: `
-You are an expert menu extraction assistant.
+You are an expert product/menu extraction assistant.
+
+Business type:
+${business.business_type}
 
 Your job:
-Convert messy menu text into clean product data for a restaurant ordering system.
+Convert messy product/menu text into clean product data.
 
 Rules:
 - Extract product name, description, price, and category.
@@ -75,6 +92,7 @@ Return exact structure:
     const cleanProducts = products
       .filter((product: any) => product.name && product.price)
       .map((product: any) => ({
+        business_id: business.id,
         name: product.name,
         description: product.description || '',
         price: Number(product.price),

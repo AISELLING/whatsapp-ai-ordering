@@ -1,11 +1,26 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
+async function getDemoBusiness() {
+  const { data, error } = await supabaseAdmin
+    .from('businesses')
+    .select('id')
+    .eq('slug', 'demo-food-shop')
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  return data
+}
+
 export async function GET() {
   try {
+    const business = await getDemoBusiness()
+
     const { data, error } = await supabaseAdmin
       .from('orders')
       .select('*')
+      .eq('business_id', business.id)
       .order('created_at', { ascending: false })
 
     if (error) {
