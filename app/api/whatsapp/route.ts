@@ -5,26 +5,13 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 
+// 🔥 IMPORTANT: PASTE YOUR BUSINESS ID HERE
+const BUSINESS_ID = 'PASTE_YOUR_BUSINESS_ID_HERE'
+
 function getBaseUrl() {
   if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
   return 'http://localhost:3000'
-}
-
-async function getBusiness() {
-  const { data: business, error } = await supabaseAdmin
-    .from('businesses')
-    .select('*')
-    .eq('slug', 'demo-food-shop')
-    .single()
-
-  if (error) throw new Error(error.message)
-
-  return business
-}
-
-export async function GET() {
-  return new Response('WhatsApp AI ordering webhook is live ✅')
 }
 
 export async function POST(req: Request) {
@@ -37,188 +24,58 @@ export async function POST(req: Request) {
     const profileName = params.get('ProfileName') || ''
     const lower = message.toLowerCase()
 
-    const business = await getBusiness()
-
-    const { data: customer } = await supabaseAdmin
-      .from('customers')
-      .select('*')
-      .eq('phone', customerPhone)
-      .eq('business_id', business.id)
-      .maybeSingle()
-
     if (!message) {
       return twiml('Hey 👋 What can I get you today?')
     }
 
-    const greetingOnly = [
-      'hi',
-      'hello',
-      'hey',
-      'yo',
-      'hiya',
-      'morning',
-      'afternoon',
-      'evening',
-    ].includes(lower)
+    // 🔥 GET CUSTOMER (NOW LOCKED TO BUSINESS)
+    const { data: customer } = await supabaseAdmin
+      .from('customers')
+      .select('*')
+      .eq('phone', customerPhone)
+      .eq('business_id', BUSINESS_ID)
+      .maybeSingle()
 
-    if (greetingOnly && customer?.usual_order?.items?.length > 0) {
-      const summary = customer.usual_order.items
-        .map((item: any) => `${item.quantity} x ${item.name}`)
-        .join(', ')
-
-      return twiml(
-        `Hey ${profileName || ''} 👋 Fancy your usual?\n\n${summary}\n\nReply “usual” and I’ll sort it.`
-      )
-    }
-
-    if (greetingOnly) {
-      return twiml(`Hey ${profileName || ''} 👋 What can I get you today?`)
-    }
-
+    // =========================
+    // 🔥 USUAL FLOW
+    // =========================
     const wantsUsual =
       lower.includes('usual') ||
       lower.includes('same again') ||
-      lower.includes('same as last time') ||
-      lower.includes('my regular') ||
-      lower.includes('what i normally get')
+      lower.includes('my regular')
 
-    const onTheWay =
-      lower.includes('on the way') ||
-      lower.includes("i'm coming") ||
-      lower.includes('im coming') ||
-      lower.includes('start my coffee') ||
-      lower.includes('get my coffee ready')
-
-    if (wantsUsual || onTheWay) {
-      const usual = await getUsualOrder(customerPhone, business.id)
-
-      if (!usual) {
-        return twiml(
-          "I don't know your usual order yet. Order once, pay, and I’ll remember it for next time 👍"
-        )
+    if (wantsUsual) {
+      if (!customer?.usual_order) {
+        return twiml("I don’t know your usual yet. Order once 👍")
       }
 
-      const preferredOrderType =
-        detectOrderTypeFromMessage(lower) ||
-        customer?.preferred_order_type ||
-        usual.order_type ||
-        customer?.last_order?.order_type ||
-        'collection'
-
-      const fixedUsual = {
-        ...usual,
-        order_type: preferredOrderType,
-      }
-
-      return createOrderAndPayment({
-        business,
-        message,
-        customerPhone,
-        profileName,
-        parsed: fixedUsual,
-        intro: onTheWay
-          ? 'Got it 👌 We’ll get your usual ready.'
-          : 'Same again? Nice one 👌',
-      })
+      return createOrder(customer.usual_order, customerPhone, profileName)
     }
 
-    const parsed = await parseOrder(message, business.id)
+    // =========================
+    // 🧠 AI PARSE ORDER
+    // =========================
+    const parsed = await parseOrder(message)
 
     if (!parsed.items || parsed.items.length === 0) {
-      return twiml(
-        parsed.reply ||
-          'Sorry, I could not find that on the menu. Please send your order again.'
-      )
+      return twiml('Sorry, I didn’t understand that.')
     }
 
-    const finalOrderType =
-      detectOrderTypeFromMessage(lower) ||
-      customer?.preferred_order_type ||
-      parsed.order_type ||
-      'collection'
+    return createOrder(parsed, customerPhone, profileName)
 
-    parsed.order_type = finalOrderType
-
-    return createOrderAndPayment({
-      business,
-      message,
-      customerPhone,
-      profileName,
-      parsed,
-      intro: 'Nice one 👌',
-    })
-  } catch (error: any) {
-    return twiml(`System error: ${error.message || 'Unknown error'}`)
+  } catch (err: any) {
+    return twiml(`Error: ${err.message}`)
   }
 }
 
-function detectOrderTypeFromMessage(message: string) {
-  if (message.includes('collection') || message.includes('collect')) {
-    return 'collection'
-  }
-
-  if (message.includes('delivery') || message.includes('deliver')) {
-    return 'delivery'
-  }
-
-  return null
-}
-
-async function getUsualOrder(customerPhone: string, businessId: string) {
-  const { data: customer } = await supabaseAdmin
-    .from('customers')
-    .select('*')
-    .eq('phone', customerPhone)
-    .eq('business_id', businessId)
-    .maybeSingle()
-
-  if (customer?.usual_order?.items?.length > 0) {
-    return customer.usual_order
-  }
-
-  const { data: lastPaidOrder } = await supabaseAdmin
-    .from('orders')
-    .select('*')
-    .eq('customer_phone', customerPhone)
-    .eq('business_id', businessId)
-    .eq('payment_status', 'paid')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (!lastPaidOrder?.items?.length) return null
-
-  return {
-    intent: 'create_order',
-    items: lastPaidOrder.items,
-    unavailable_items: [],
-    order_type: lastPaidOrder.order_type || 'collection',
-    missing_info: [],
-    subtotal: lastPaidOrder.subtotal || 0,
-    reply: 'Loaded your usual order.',
-  }
-}
-
-async function parseOrder(message: string, businessId: string) {
-  const { data: products, error } = await supabaseAdmin
+// =========================
+// 🧠 PARSE ORDER (BUSINESS LOCKED)
+// =========================
+async function parseOrder(message: string) {
+  const { data: products } = await supabaseAdmin
     .from('products')
-    .select('name, description, price, category, is_available')
-    .eq('business_id', businessId)
-    .eq('is_available', true)
-
-  if (error) throw new Error(error.message)
-
-  if (!products || products.length === 0) {
-    return {
-      intent: 'unknown_or_question',
-      items: [],
-      unavailable_items: [],
-      order_type: 'collection',
-      missing_info: [],
-      subtotal: 0,
-      reply: 'No menu is loaded yet.',
-    }
-  }
+    .select('*')
+    .eq('business_id', BUSINESS_ID)
 
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -227,37 +84,14 @@ async function parseOrder(message: string, businessId: string) {
       {
         role: 'system',
         content: `
-You are a friendly WhatsApp AI ordering assistant.
+Menu:
+${JSON.stringify(products)}
 
-LIVE MENU:
-${JSON.stringify(products, null, 2)}
-
-Rules:
-- Understand casual human messages.
-- Only sell live menu items.
-- Do not invent products or prices.
-- Currency is GBP.
-- If customer does not say delivery or collection, use "collection".
-- order_type must be "delivery" or "collection".
-- Return JSON only.
-
-Return exact JSON:
+Return JSON:
 {
-  "intent": "create_order",
-  "items": [
-    {
-      "name": "",
-      "quantity": 0,
-      "unit_price": 0,
-      "line_total": 0,
-      "notes": ""
-    }
-  ],
-  "unavailable_items": [],
-  "order_type": "collection",
-  "missing_info": [],
-  "subtotal": 0,
-  "reply": ""
+  "items": [{"name":"","quantity":1,"unit_price":0,"line_total":0}],
+  "subtotal":0,
+  "order_type":"collection"
 }
         `,
       },
@@ -265,120 +99,72 @@ Return exact JSON:
     ],
   })
 
-  const parsed = JSON.parse(completion.choices[0].message.content || '{}')
-
-  return {
-    intent: parsed.intent || 'create_order',
-    items: parsed.items || [],
-    unavailable_items: parsed.unavailable_items || [],
-    order_type: parsed.order_type || 'collection',
-    missing_info: parsed.missing_info || [],
-    subtotal: Number(parsed.subtotal || 0),
-    reply: parsed.reply || '',
-  }
+  return JSON.parse(completion.choices[0].message.content || '{}')
 }
 
-async function createOrderAndPayment({
-  business,
-  message,
-  customerPhone,
-  profileName,
-  parsed,
-  intro,
-}: any) {
-  const cleanOrderType =
+// =========================
+// 💳 CREATE ORDER
+// =========================
+async function createOrder(parsed: any, phone: string, profileName: string) {
+
+  const orderType =
     parsed.order_type === 'delivery' ? 'delivery' : 'collection'
 
-  const { data: savedOrder, error: orderError } = await supabaseAdmin
+  const { data: order } = await supabaseAdmin
     .from('orders')
     .insert({
-      business_id: business.id,
-      customer_phone: customerPhone,
+      business_id: BUSINESS_ID,
+      customer_phone: phone,
       customer_profile_name: profileName,
-      customer_message: message,
       items: parsed.items,
-      unavailable_items: parsed.unavailable_items || [],
-      order_type: cleanOrderType,
-      missing_info: parsed.missing_info || [],
-      subtotal: Number(parsed.subtotal || 0),
-      ai_reply: parsed.reply || '',
+      subtotal: parsed.subtotal,
+      order_type: orderType,
       payment_status: 'pending',
-      order_status: 'new',
     })
     .select()
     .single()
 
-  if (orderError) {
-    return twiml(`Order save error: ${orderError.message}`)
-  }
-
-  const lineItems = parsed.items.map((item: any) => ({
-    price_data: {
-      currency: 'gbp',
-      product_data: {
-        name: item.name,
-      },
-      unit_amount: Math.round(Number(item.unit_price) * 100),
-    },
-    quantity: Number(item.quantity),
-  }))
-
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
-    line_items: lineItems,
-    success_url: `${getBaseUrl()}/success?session_id={CHECKOUT_SESSION_ID}`,
+    line_items: parsed.items.map((i: any) => ({
+      price_data: {
+        currency: 'gbp',
+        product_data: { name: i.name },
+        unit_amount: Math.round(i.unit_price * 100),
+      },
+      quantity: i.quantity,
+    })),
+    success_url: `${getBaseUrl()}/success`,
     cancel_url: `${getBaseUrl()}/cancel`,
-    metadata: {
-      order_id: savedOrder.id,
-      business_id: business.id,
-    },
+    metadata: { order_id: order.id },
   })
 
   await supabaseAdmin
     .from('orders')
-    .update({
-      stripe_checkout_url: session.url,
-      stripe_session_id: session.id,
-    })
-    .eq('id', savedOrder.id)
+    .update({ stripe_checkout_url: session.url })
+    .eq('id', order.id)
 
-  const itemSummary = parsed.items
-    .map(
-      (item: any) =>
-        `${item.quantity} x ${item.name} - £${Number(item.line_total).toFixed(2)}`
-    )
+  const summary = parsed.items
+    .map((i: any) => `${i.quantity} x ${i.name}`)
     .join('\n')
 
-  const orderTypeLine =
-    cleanOrderType === 'delivery'
+  const typeLine =
+    orderType === 'delivery'
       ? 'We’ll get that delivered 🚚'
       : 'Ready for collection 👍'
 
   return twiml(
-    `${business.name}\n\n${intro}\n\n${itemSummary}\n\n${orderTypeLine}\nTotal: £${Number(
-      parsed.subtotal || 0
-    ).toFixed(2)}\n\nPay here:\n${session.url}`
+    `Nice one 👌\n\n${summary}\n\n${typeLine}\nTotal: £${parsed.subtotal}\n\nPay here:\n${session.url}`
   )
 }
 
+// =========================
+// 📲 TWILIO RESPONSE
+// =========================
 function twiml(message: string) {
   return new Response(
     `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>${escapeXml(message)}</Message>
-</Response>`,
-    {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/xml',
-      },
-    }
+<Response><Message>${message}</Message></Response>`,
+    { headers: { 'Content-Type': 'text/xml' } }
   )
-}
-
-function escapeXml(text: string) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
 }
