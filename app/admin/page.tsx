@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAuthHeaders } from '@/lib/supabaseBrowser'
+import { getAuthHeaders, getSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 
 type AdminOverview = {
   totals: {
@@ -61,6 +61,12 @@ export default function AdminPage() {
     loadOverview()
   }, [router])
 
+  const logout = async () => {
+    const supabase = getSupabaseBrowserClient()
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
+
   return (
     <main style={page}>
       <header style={header}>
@@ -68,7 +74,10 @@ export default function AdminPage() {
           <p style={eyebrow}>WhatsApp AI Ordering SaaS</p>
           <h1 style={title}>Admin Dashboard</h1>
         </div>
-        <a href="/app/businesses" style={headerLink}>Back to App</a>
+        <nav style={headerActions}>
+          <a href="/app/businesses" style={headerLink}>Back to App</a>
+          <button onClick={logout} style={logoutButton}>Logout</button>
+        </nav>
       </header>
 
       {loading && <p style={notice}>Loading admin dashboard...</p>}
@@ -188,6 +197,14 @@ const title: React.CSSProperties = {
   fontSize: 36,
 }
 
+const headerActions: React.CSSProperties = {
+  display: 'flex',
+  gap: 10,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  justifyContent: 'flex-end',
+}
+
 const headerLink: React.CSSProperties = {
   color: '#020617',
   background: 'white',
@@ -195,6 +212,12 @@ const headerLink: React.CSSProperties = {
   fontWeight: 900,
   padding: '11px 14px',
   borderRadius: 12,
+}
+
+const logoutButton: React.CSSProperties = {
+  ...headerLink,
+  border: 'none',
+  cursor: 'pointer',
 }
 
 const notice: React.CSSProperties = {

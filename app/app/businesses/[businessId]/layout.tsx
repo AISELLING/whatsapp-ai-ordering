@@ -98,21 +98,27 @@ export default function BusinessWorkspaceLayout({
             Dashboard
           </a>
           <a
-            href={`/app/businesses/${encodedBusinessId}/dashboard#orders`}
+            href={`/app/businesses/${encodedBusinessId}/orders`}
             style={navLink}
           >
             Orders
           </a>
-          <a href={`/menu?business_id=${encodedBusinessId}`} style={navLink}>
+          <a
+            href={`/app/businesses/${encodedBusinessId}/menu`}
+            style={navLink}
+          >
             Menu
           </a>
           <a
-            href={`/menu-import?business_id=${encodedBusinessId}`}
+            href={`/app/businesses/${encodedBusinessId}/menu/import`}
             style={navLink}
           >
             Import Menu
           </a>
-          <a href="#" style={disabledNavLink}>
+          <a
+            href={`/app/businesses/${encodedBusinessId}/settings`}
+            style={navLink}
+          >
             Settings
           </a>
         </nav>
@@ -184,12 +190,6 @@ const navLink: React.CSSProperties = {
   padding: '12px 14px',
   borderRadius: 12,
   border: '1px solid rgba(255,255,255,0.12)',
-}
-
-const disabledNavLink: React.CSSProperties = {
-  ...navLink,
-  color: '#94a3b8',
-  cursor: 'not-allowed',
 }
 
 const backLink: React.CSSProperties = {
