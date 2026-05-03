@@ -98,7 +98,7 @@ export default function BusinessesPage() {
 
                 <div style={actions}>
                   <a
-                    href={`/dashboard?business_id=${businessId}`}
+                    href={`/app/businesses/${businessId}/dashboard`}
                     style={primaryButton}
                   >
                     Dashboard
