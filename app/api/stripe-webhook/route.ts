@@ -52,6 +52,7 @@ export async function POST(req: Request) {
             phone: order.customer_phone,
             whatsapp_profile_name: order.customer_profile_name || '',
             usual_order: usualOrder,
+            last_order: usualOrder,
             last_order_text: `${order.order_type || 'collection'} order - £${Number(
               order.subtotal || 0
             ).toFixed(2)}`,
