@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
 type Business = {
   id: string
@@ -16,6 +17,7 @@ type Business = {
 export default function OnboardingPage() {
   const [businesses, setBusinesses] = useState<Business[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [form, setForm] = useState({
     name: '',
     business_type: 'restaurant',
@@ -27,11 +29,26 @@ export default function OnboardingPage() {
   })
 
   const fetchBusinesses = async () => {
-    const res = await fetch('/api/businesses', { cache: 'no-store' })
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      setError('Please sign in to view your businesses.')
+      setBusinesses([])
+      return
+    }
+
+    const res = await fetch('/api/businesses', {
+      cache: 'no-store',
+      headers: authHeaders,
+    })
     const data = await res.json()
 
     if (data.success) {
       setBusinesses(data.businesses)
+      setError('')
+    } else {
+      setError(data.message || 'Failed to load businesses')
+      setBusinesses([])
     }
   }
 
@@ -45,11 +62,21 @@ export default function OnboardingPage() {
       return
     }
 
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      alert('Please sign in to create a business')
+      return
+    }
+
     setLoading(true)
 
     const res = await fetch('/api/businesses', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
       body: JSON.stringify(form),
     })
 
@@ -172,6 +199,8 @@ export default function OnboardingPage() {
 
         <div style={card}>
           <h2 style={cardTitle}>Existing Businesses</h2>
+
+          {error && <p style={errorText}>{error}</p>}
 
           {businesses.length === 0 ? (
             <p style={muted}>No businesses created yet.</p>
@@ -325,6 +354,14 @@ const businessCard: React.CSSProperties = {
 const muted: React.CSSProperties = {
   color: '#64748b',
   margin: '5px 0',
+}
+
+const errorText: React.CSSProperties = {
+  color: '#991b1b',
+  background: '#fee2e2',
+  border: '1px solid #fecaca',
+  borderRadius: 12,
+  padding: 12,
 }
 
 const typeBadge: React.CSSProperties = {
