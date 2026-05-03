@@ -12,11 +12,37 @@ export function getSupabaseBrowserClient() {
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error(
-      'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY'
+      'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. Add both public Supabase env vars and redeploy.'
     )
   }
 
-  supabaseBrowserClient = createClient(supabaseUrl, supabaseAnonKey)
+  supabaseBrowserClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      fetch: async (input, init) => {
+        try {
+          return await fetch(input, init)
+        } catch (error: any) {
+          const requestUrl =
+            typeof input === 'string'
+              ? input
+              : input instanceof URL
+                ? input.toString()
+                : input.url
+
+          console.error('Supabase browser request failed', {
+            url: requestUrl,
+            error,
+          })
+
+          throw new Error(
+            `Supabase request failed for ${requestUrl}: ${
+              error?.message || 'Network request failed'
+            }`
+          )
+        }
+      },
+    },
+  })
 
   return supabaseBrowserClient
 }

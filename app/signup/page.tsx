@@ -4,6 +4,26 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 
+function getErrorMessage(error: any, fallback: string) {
+  if (!error) {
+    return fallback
+  }
+
+  if (typeof error.message === 'string' && error.message.trim()) {
+    return error.message
+  }
+
+  if (typeof error.error_description === 'string') {
+    return error.error_description
+  }
+
+  if (typeof error.name === 'string') {
+    return `${fallback}: ${error.name}`
+  }
+
+  return fallback
+}
+
 export default function SignupPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -25,7 +45,8 @@ export default function SignupPage() {
           return
         }
       } catch (err: any) {
-        setError(err.message || 'Unable to check login status')
+        console.error('Supabase session check failed', err)
+        setError(getErrorMessage(err, 'Unable to check login status'))
       }
 
       setCheckingSession(false)
@@ -47,14 +68,16 @@ export default function SignupPage() {
       })
 
       if (signupError) {
-        setError(signupError.message)
+        console.error('Supabase signup returned an auth error', signupError)
+        setError(getErrorMessage(signupError, 'Signup failed'))
         setLoading(false)
         return
       }
 
       router.push('/onboarding')
     } catch (err: any) {
-      setError(err.message || 'Signup failed')
+      console.error('Supabase signup request failed', err)
+      setError(getErrorMessage(err, 'Signup failed'))
       setLoading(false)
     }
   }
