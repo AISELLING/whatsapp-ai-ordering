@@ -1,9 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
-export default function MenuPage() {
+function MenuContent() {
+  const params = useSearchParams()
+  const businessId = params.get('business_id')
+
   const [products, setProducts] = useState<any[]>([])
+  const [error, setError] = useState('')
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -12,21 +18,60 @@ export default function MenuPage() {
   })
 
   const fetchProducts = async () => {
-    const res = await fetch('/api/products')
+    if (!businessId) {
+      setError('business_id required')
+      return
+    }
+
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      setError('Please sign in to manage this menu.')
+      return
+    }
+
+    const res = await fetch(`/api/products?business_id=${businessId}`, {
+      headers: authHeaders,
+    })
     const data = await res.json()
+
+    if (data.error) {
+      setError(data.message || 'Failed to load products')
+      return
+    }
+
     setProducts(data.products || [])
+    setError('')
   }
 
   const addProduct = async () => {
+    if (!businessId) {
+      alert('business_id required')
+      return
+    }
+
     if (!form.name || !form.price) {
       alert('Name and price required')
       return
     }
 
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      alert('Please sign in to manage this menu.')
+      return
+    }
+
     const res = await fetch('/api/products', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        ...form,
+        business_id: businessId,
+      }),
     })
 
     const data = await res.json()
@@ -47,10 +92,28 @@ export default function MenuPage() {
   }
 
   const deleteProduct = async (id: string) => {
+    if (!businessId) {
+      alert('business_id required')
+      return
+    }
+
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      alert('Please sign in to manage this menu.')
+      return
+    }
+
     await fetch('/api/products/delete', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        id,
+        business_id: businessId,
+      }),
     })
 
     fetchProducts()
@@ -58,14 +121,18 @@ export default function MenuPage() {
 
   useEffect(() => {
     fetchProducts()
-  }, [])
+  }, [businessId])
 
   return (
     <main style={{ padding: 40, fontFamily: 'Arial', maxWidth: 800 }}>
       <h1>Menu Manager</h1>
       <p>Add products that your AI assistant can sell.</p>
 
-      <a href="/">← Order page</a> | <a href="/dashboard">Dashboard</a>
+      <a href="/">← Order page</a> |{' '}
+      <a href={`/dashboard?business_id=${businessId || ''}`}>Dashboard</a>
+
+      <p><strong>Business ID:</strong> {businessId}</p>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
 
       <div
         style={{
@@ -160,5 +227,13 @@ export default function MenuPage() {
         ))}
       </div>
     </main>
+  )
+}
+
+export default function MenuPage() {
+  return (
+    <Suspense fallback={<p style={{ padding: 40 }}>Loading menu...</p>}>
+      <MenuContent />
+    </Suspense>
   )
 }

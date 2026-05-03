@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
 function DashboardContent() {
   const params = useSearchParams()
@@ -9,15 +10,33 @@ function DashboardContent() {
 
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   const fetchOrders = async () => {
-    if (!businessId) return
+    if (!businessId) {
+      setError('business_id required')
+      setLoading(false)
+      return
+    }
 
-    const res = await fetch(`/api/orders?business_id=${businessId}`)
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      setError('Please sign in to view this dashboard.')
+      setLoading(false)
+      return
+    }
+
+    const res = await fetch(`/api/orders?business_id=${businessId}`, {
+      headers: authHeaders,
+    })
     const data = await res.json()
 
     if (data.success) {
       setOrders(data.orders)
+      setError('')
+    } else {
+      setError(data.message || 'Failed to load orders')
     }
 
     setLoading(false)
@@ -40,6 +59,7 @@ function DashboardContent() {
       <h2>Revenue: £{revenue.toFixed(2)}</h2>
 
       {loading && <p>Loading...</p>}
+      {error && <p style={{ color: 'red' }}>{error}</p>}
 
       {orders.map((order) => (
         <div
