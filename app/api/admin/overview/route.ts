@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { User } from '@supabase/supabase-js'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
-const ADMIN_EMAIL = 'admin@example.com'
+const ADMIN_EMAIL = 'daman@idistro.co.uk'
 
 type LatestUser = {
   id: string
