@@ -4,13 +4,22 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
+type OrderItem = {
+  name?: string
+  quantity?: number
+  line_total?: number
+  unit_price?: number
+}
+
 type Order = {
   id: string
+  customer_profile_name?: string
+  customer_phone?: string
+  items?: OrderItem[]
   payment_status?: string
   subtotal?: number | string
   order_type?: string
   order_status?: string
-  customer_phone?: string
   created_at?: string
 }
 
@@ -64,6 +73,7 @@ export default function BusinessDashboardPage() {
     .reduce((sum, order) => sum + Number(order.subtotal || 0), 0)
 
   const encodedBusinessId = encodeURIComponent(businessId)
+  const recentOrders = orders.slice(0, 5)
 
   return (
     <>
@@ -74,6 +84,12 @@ export default function BusinessDashboardPage() {
         </div>
 
         <div style={actions}>
+          <a
+            href={`/app/businesses/${encodedBusinessId}/orders`}
+            style={primaryButton}
+          >
+            View All Orders
+          </a>
           <a href={`/menu?business_id=${encodedBusinessId}`} style={secondaryButton}>
             Manage Menu
           </a>
@@ -82,9 +98,6 @@ export default function BusinessDashboardPage() {
             style={secondaryButton}
           >
             Import Menu
-          </a>
-          <a href="/app/businesses" style={primaryButton}>
-            Back to Businesses
           </a>
         </div>
       </section>
@@ -116,11 +129,18 @@ export default function BusinessDashboardPage() {
         <div style={sectionHeader}>
           <div>
             <h2 style={sectionTitle}>Recent Orders</h2>
-            <p style={muted}>Paid, pending and new orders for this business.</p>
+            <p style={muted}>The latest orders for this business.</p>
           </div>
+
+          <a
+            href={`/app/businesses/${encodedBusinessId}/orders`}
+            style={secondaryButton}
+          >
+            Full Orders Page
+          </a>
         </div>
 
-        {!loading && orders.length === 0 ? (
+        {!loading && recentOrders.length === 0 ? (
           <div style={emptyState}>
             <h3 style={{ marginTop: 0 }}>No orders yet</h3>
             <p style={muted}>
@@ -136,20 +156,21 @@ export default function BusinessDashboardPage() {
           </div>
         ) : (
           <div style={orderList}>
-            {orders.map((order) => (
+            {recentOrders.map((order) => (
               <article key={order.id} style={orderCard}>
                 <div>
-                  <strong>Order {order.id.slice(0, 8)}</strong>
+                  <strong>
+                    {order.customer_profile_name ||
+                      order.customer_phone ||
+                      `Order ${order.id.slice(0, 8)}`}
+                  </strong>
                   <p style={muted}>
-                    {order.customer_phone || 'Customer'} ·{' '}
-                    {order.order_type || 'Type pending'}
+                    {formatItems(order.items)} · {order.order_status || 'new'}
                   </p>
                 </div>
 
                 <div style={orderMeta}>
-                  <span style={statusBadge}>
-                    {order.payment_status || 'pending'}
-                  </span>
+                  <span style={statusBadge}>{order.payment_status || 'pending'}</span>
                   <strong>£{Number(order.subtotal || 0).toFixed(2)}</strong>
                 </div>
               </article>
@@ -159,6 +180,15 @@ export default function BusinessDashboardPage() {
       </section>
     </>
   )
+}
+
+function formatItems(items?: OrderItem[]) {
+  if (!items || items.length === 0) return 'No items'
+
+  return items
+    .slice(0, 2)
+    .map((item) => `${Number(item.quantity || 1)} x ${item.name || 'Item'}`)
+    .join(', ')
 }
 
 const toolbar: React.CSSProperties = {
