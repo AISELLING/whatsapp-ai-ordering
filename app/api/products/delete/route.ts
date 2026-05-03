@@ -1,20 +1,42 @@
 import { NextResponse } from 'next/server'
+import { requireBusinessAccess } from '@/lib/apiSecurity'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 export async function POST(req: Request) {
-  const { id } = await req.json()
+  try {
+    const { id, business_id } = await req.json()
 
-  const { error } = await supabaseAdmin
-    .from('products')
-    .delete()
-    .eq('id', id)
+    if (!id || !business_id) {
+      return NextResponse.json(
+        { error: true, message: 'Missing id or business_id' },
+        { status: 400 }
+      )
+    }
 
-  if (error) {
+    const access = await requireBusinessAccess(req, business_id)
+
+    if (!access.ok) {
+      return access.response
+    }
+
+    const { error } = await supabaseAdmin
+      .from('products')
+      .delete()
+      .eq('id', id)
+      .eq('business_id', business_id)
+
+    if (error) {
+      return NextResponse.json(
+        { error: true, message: error.message },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
     return NextResponse.json(
-      { error: true, message: error.message },
+      { error: true, message: error.message || 'Failed to delete product' },
       { status: 500 }
     )
   }
-
-  return NextResponse.json({ success: true })
 }

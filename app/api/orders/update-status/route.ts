@@ -1,22 +1,30 @@
 import { NextResponse } from 'next/server'
+import { requireBusinessAccess } from '@/lib/apiSecurity'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { order_id, order_status } = body
+    const { order_id, order_status, business_id } = body
 
-    if (!order_id || !order_status) {
+    if (!order_id || !order_status || !business_id) {
       return NextResponse.json(
-        { error: true, message: 'Missing order_id or order_status' },
+        { error: true, message: 'Missing order_id, order_status, or business_id' },
         { status: 400 }
       )
+    }
+
+    const access = await requireBusinessAccess(req, business_id)
+
+    if (!access.ok) {
+      return access.response
     }
 
     const { data, error } = await supabaseAdmin
       .from('orders')
       .update({ order_status })
       .eq('id', order_id)
+      .eq('business_id', business_id)
       .select()
       .single()
 
