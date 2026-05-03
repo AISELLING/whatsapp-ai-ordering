@@ -19,6 +19,7 @@ async function getBusiness() {
     .single()
 
   if (error) throw new Error(error.message)
+
   return business
 }
 
@@ -97,12 +98,24 @@ export async function POST(req: Request) {
         )
       }
 
+      const preferredOrderType =
+        detectOrderTypeFromMessage(lower) ||
+        customer?.preferred_order_type ||
+        usual.order_type ||
+        customer?.last_order?.order_type ||
+        'collection'
+
+      const fixedUsual = {
+        ...usual,
+        order_type: preferredOrderType,
+      }
+
       return createOrderAndPayment({
         business,
         message,
         customerPhone,
         profileName,
-        parsed: usual,
+        parsed: fixedUsual,
         intro: onTheWay
           ? 'Got it 👌 We’ll get your usual ready.'
           : 'Same again? Nice one 👌',
@@ -118,9 +131,13 @@ export async function POST(req: Request) {
       )
     }
 
-    if (parsed.missing_info && parsed.missing_info.length > 0) {
-      return twiml(parsed.reply || 'Is that for collection or delivery?')
-    }
+    const finalOrderType =
+      detectOrderTypeFromMessage(lower) ||
+      customer?.preferred_order_type ||
+      parsed.order_type ||
+      'collection'
+
+    parsed.order_type = finalOrderType
 
     return createOrderAndPayment({
       business,
@@ -133,6 +150,18 @@ export async function POST(req: Request) {
   } catch (error: any) {
     return twiml(`System error: ${error.message || 'Unknown error'}`)
   }
+}
+
+function detectOrderTypeFromMessage(message: string) {
+  if (message.includes('collection') || message.includes('collect')) {
+    return 'collection'
+  }
+
+  if (message.includes('delivery') || message.includes('deliver')) {
+    return 'delivery'
+  }
+
+  return null
 }
 
 async function getUsualOrder(customerPhone: string, businessId: string) {
@@ -184,7 +213,7 @@ async function parseOrder(message: string, businessId: string) {
       intent: 'unknown_or_question',
       items: [],
       unavailable_items: [],
-      order_type: '',
+      order_type: 'collection',
       missing_info: [],
       subtotal: 0,
       reply: 'No menu is loaded yet.',
@@ -208,8 +237,8 @@ Rules:
 - Only sell live menu items.
 - Do not invent products or prices.
 - Currency is GBP.
-- order_type must be "delivery", "collection", or "".
-- If customer does not say delivery or collection, choose "collection" by default.
+- If customer does not say delivery or collection, use "collection".
+- order_type must be "delivery" or "collection".
 - Return JSON only.
 
 Return exact JSON:
@@ -236,7 +265,17 @@ Return exact JSON:
     ],
   })
 
-  return JSON.parse(completion.choices[0].message.content || '{}')
+  const parsed = JSON.parse(completion.choices[0].message.content || '{}')
+
+  return {
+    intent: parsed.intent || 'create_order',
+    items: parsed.items || [],
+    unavailable_items: parsed.unavailable_items || [],
+    order_type: parsed.order_type || 'collection',
+    missing_info: parsed.missing_info || [],
+    subtotal: Number(parsed.subtotal || 0),
+    reply: parsed.reply || '',
+  }
 }
 
 async function createOrderAndPayment({
@@ -247,6 +286,9 @@ async function createOrderAndPayment({
   parsed,
   intro,
 }: any) {
+  const cleanOrderType =
+    parsed.order_type === 'delivery' ? 'delivery' : 'collection'
+
   const { data: savedOrder, error: orderError } = await supabaseAdmin
     .from('orders')
     .insert({
@@ -256,9 +298,9 @@ async function createOrderAndPayment({
       customer_message: message,
       items: parsed.items,
       unavailable_items: parsed.unavailable_items || [],
-      order_type: parsed.order_type || 'collection',
+      order_type: cleanOrderType,
       missing_info: parsed.missing_info || [],
-      subtotal: parsed.subtotal || 0,
+      subtotal: Number(parsed.subtotal || 0),
       ai_reply: parsed.reply || '',
       payment_status: 'pending',
       order_status: 'new',
@@ -266,12 +308,16 @@ async function createOrderAndPayment({
     .select()
     .single()
 
-  if (orderError) return twiml(`Order save error: ${orderError.message}`)
+  if (orderError) {
+    return twiml(`Order save error: ${orderError.message}`)
+  }
 
   const lineItems = parsed.items.map((item: any) => ({
     price_data: {
       currency: 'gbp',
-      product_data: { name: item.name },
+      product_data: {
+        name: item.name,
+      },
       unit_amount: Math.round(Number(item.unit_price) * 100),
     },
     quantity: Number(item.quantity),
@@ -304,13 +350,13 @@ async function createOrderAndPayment({
     .join('\n')
 
   const orderTypeLine =
-    parsed.order_type === 'delivery'
+    cleanOrderType === 'delivery'
       ? 'We’ll get that delivered 🚚'
       : 'Ready for collection 👍'
 
   return twiml(
     `${business.name}\n\n${intro}\n\n${itemSummary}\n\n${orderTypeLine}\nTotal: £${Number(
-      parsed.subtotal
+      parsed.subtotal || 0
     ).toFixed(2)}\n\nPay here:\n${session.url}`
   )
 }
