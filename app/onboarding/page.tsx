@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
 type Business = {
@@ -15,8 +16,10 @@ type Business = {
 }
 
 export default function OnboardingPage() {
+  const router = useRouter()
   const [businesses, setBusinesses] = useState<Business[]>([])
   const [loading, setLoading] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     name: '',
@@ -32,8 +35,7 @@ export default function OnboardingPage() {
     const authHeaders = await getAuthHeaders()
 
     if (!authHeaders) {
-      setError('Please sign in to view your businesses.')
-      setBusinesses([])
+      router.replace('/login')
       return
     }
 
@@ -46,10 +48,15 @@ export default function OnboardingPage() {
     if (data.success) {
       setBusinesses(data.businesses)
       setError('')
+    } else if (res.status === 401) {
+      router.replace('/login')
+      return
     } else {
       setError(data.message || 'Failed to load businesses')
       setBusinesses([])
     }
+
+    setCheckingAuth(false)
   }
 
   useEffect(() => {
@@ -65,7 +72,7 @@ export default function OnboardingPage() {
     const authHeaders = await getAuthHeaders()
 
     if (!authHeaders) {
-      alert('Please sign in to create a business')
+      router.replace('/login')
       return
     }
 
@@ -102,6 +109,10 @@ export default function OnboardingPage() {
     fetchBusinesses()
 
     alert('Business created successfully')
+  }
+
+  if (checkingAuth) {
+    return <main style={page}>Loading onboarding...</main>
   }
 
   return (

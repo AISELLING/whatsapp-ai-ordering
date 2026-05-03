@@ -4,6 +4,32 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 
+type Business = {
+  id: string
+}
+
+async function getPostLoginPath(accessToken: string) {
+  const res = await fetch('/api/businesses', {
+    cache: 'no-store',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+  const data = await res.json()
+
+  if (!data.success) {
+    throw new Error(data.message || 'Failed to load businesses')
+  }
+
+  const businesses = (data.businesses || []) as Business[]
+
+  if (businesses.length === 1) {
+    return `/dashboard?business_id=${encodeURIComponent(businesses[0].id)}`
+  }
+
+  return '/onboarding'
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -20,8 +46,8 @@ export default function LoginPage() {
           data: { session },
         } = await supabase.auth.getSession()
 
-        if (session) {
-          router.replace('/dashboard')
+        if (session?.access_token) {
+          router.replace(await getPostLoginPath(session.access_token))
           return
         }
       } catch (err: any) {
@@ -41,7 +67,7 @@ export default function LoginPage() {
 
     try {
       const supabase = getSupabaseBrowserClient()
-      const { error: loginError } = await supabase.auth.signInWithPassword({
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
@@ -52,7 +78,13 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/onboarding')
+      if (!data.session?.access_token) {
+        setError('Login succeeded, but no Supabase session was returned.')
+        setLoading(false)
+        return
+      }
+
+      router.push(await getPostLoginPath(data.session.access_token))
     } catch (err: any) {
       setError(err.message || 'Login failed')
       setLoading(false)

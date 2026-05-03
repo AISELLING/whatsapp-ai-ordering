@@ -1,10 +1,15 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
+type Business = {
+  id: string
+}
+
 function DashboardContent() {
+  const router = useRouter()
   const params = useSearchParams()
   const businessId = params.get('business_id')
 
@@ -12,18 +17,48 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const fetchOrders = async () => {
-    if (!businessId) {
-      setError('business_id required')
-      setLoading(false)
+  const resolveBusiness = async (authHeaders: { Authorization: string }) => {
+    const res = await fetch('/api/businesses', {
+      cache: 'no-store',
+      headers: authHeaders,
+    })
+    const data = await res.json()
+
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to load businesses')
+    }
+
+    const businesses = (data.businesses || []) as Business[]
+
+    if (businesses.length === 1) {
+      router.replace(
+        `/dashboard?business_id=${encodeURIComponent(businesses[0].id)}`
+      )
       return
     }
+
+    router.replace('/onboarding')
+  }
+
+  const fetchOrders = async () => {
+    setLoading(true)
+    setError('')
 
     const authHeaders = await getAuthHeaders()
 
     if (!authHeaders) {
-      setError('Please sign in to view this dashboard.')
-      setLoading(false)
+      router.replace('/login')
+      return
+    }
+
+    if (!businessId) {
+      try {
+        await resolveBusiness(authHeaders)
+      } catch (err: any) {
+        setError(err.message || 'Failed to resolve business')
+        setLoading(false)
+      }
+
       return
     }
 
@@ -35,6 +70,12 @@ function DashboardContent() {
     if (data.success) {
       setOrders(data.orders)
       setError('')
+    } else if (res.status === 401) {
+      router.replace('/login')
+      return
+    } else if (res.status === 403) {
+      router.replace('/onboarding')
+      return
     } else {
       setError(data.message || 'Failed to load orders')
     }
