@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-export default function Dashboard() {
+function DashboardContent() {
   const params = useSearchParams()
   const businessId = params.get('business_id')
 
@@ -57,5 +57,13 @@ export default function Dashboard() {
         </div>
       ))}
     </div>
+  )
+}
+
+export default function Dashboard() {
+  return (
+    <Suspense fallback={<p style={{ padding: 30 }}>Loading...</p>}>
+      <DashboardContent />
+    </Suspense>
   )
 }
