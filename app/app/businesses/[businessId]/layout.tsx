@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, usePathname, useRouter } from 'next/navigation'
+import { Tek9Logo } from '@/components/tek9'
 import { getAuthHeaders, getSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 
 type Business = {
@@ -11,12 +12,22 @@ type Business = {
   business_type?: string
 }
 
+const navigation = [
+  ['Dashboard', 'dashboard'],
+  ['Orders', 'orders'],
+  ['Menu', 'menu'],
+  ['Import Menu', 'menu/import'],
+  ['AI Settings', 'ai-settings'],
+  ['Settings', 'settings'],
+]
+
 export default function BusinessWorkspaceLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   const params = useParams<{ businessId: string }>()
+  const pathname = usePathname()
   const router = useRouter()
   const businessId = params.businessId
 
@@ -75,173 +86,82 @@ export default function BusinessWorkspaceLayout({
   const encodedBusinessId = encodeURIComponent(businessId)
 
   if (loading) {
-    return <main style={loadingPage}>Loading workspace...</main>
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#0B0F1A] p-6 text-white">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-8 text-slate-300">
+          Loading workspace...
+        </div>
+      </main>
+    )
   }
 
   if (error) {
-    return <main style={loadingPage}>{error}</main>
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#0B0F1A] p-6 text-white">
+        <div className="rounded-2xl border border-rose-300/20 bg-rose-400/10 p-8 text-rose-100">
+          {error}
+        </div>
+      </main>
+    )
   }
 
   return (
-    <main style={shell}>
-      <aside style={sidebar}>
-        <div>
-          <p style={eyebrow}>WhatsApp AI</p>
-          <h1 style={brand}>Ordering SaaS</h1>
-        </div>
+    <main className="min-h-screen bg-[#0B0F1A] text-white">
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_10%,rgba(168,85,247,0.18),transparent_30%),radial-gradient(circle_at_86%_18%,rgba(34,211,238,0.12),transparent_28%),linear-gradient(180deg,#0B0F1A,#070A12)]" />
+      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
+        <aside className="border-b border-white/10 bg-black/20 p-5 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r">
+          <div className="flex h-full flex-col gap-6">
+            <Tek9Logo />
+            <nav className="grid gap-2">
+              {navigation.map(([label, href]) => {
+                const target = `/app/businesses/${encodedBusinessId}/${href}`
+                const active = pathname === target
 
-        <nav style={nav}>
-          <a
-            href={`/app/businesses/${encodedBusinessId}/dashboard`}
-            style={navLink}
-          >
-            Dashboard
-          </a>
-          <a
-            href={`/app/businesses/${encodedBusinessId}/orders`}
-            style={navLink}
-          >
-            Orders
-          </a>
-          <a
-            href={`/app/businesses/${encodedBusinessId}/menu`}
-            style={navLink}
-          >
-            Menu
-          </a>
-          <a
-            href={`/app/businesses/${encodedBusinessId}/menu/import`}
-            style={navLink}
-          >
-            Import Menu
-          </a>
-          <a
-            href={`/app/businesses/${encodedBusinessId}/settings`}
-            style={navLink}
-          >
-            Settings
-          </a>
-        </nav>
-
-        <a href="/app/businesses" style={backLink}>
-          All Businesses
-        </a>
-      </aside>
-
-      <section style={workspace}>
-        <header style={header}>
-          <div>
-            <p style={muted}>Current business</p>
-            <h2 style={businessName}>{business?.name}</h2>
+                return (
+                  <a
+                    key={href}
+                    href={target}
+                    className={`rounded-2xl border px-4 py-3 text-sm font-bold transition ${
+                      active
+                        ? 'border-violet-300/30 bg-violet-400/15 text-white shadow-[0_0_26px_rgba(168,85,247,0.18)]'
+                        : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.07] hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </a>
+                )
+              })}
+            </nav>
+            <a
+              href="/app/businesses"
+              className="mt-auto rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-center text-sm font-black text-slate-200 transition hover:bg-white/10"
+            >
+              All Businesses
+            </a>
           </div>
+        </aside>
 
-          <button onClick={logout} style={logoutButton}>
-            Logout
-          </button>
-        </header>
+        <section className="min-w-0 p-5 sm:p-8">
+          <header className="mb-6 flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-400">
+                Current business
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-white">
+                {business?.name}
+              </h2>
+            </div>
+            <button
+              onClick={logout}
+              className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-white transition hover:bg-white/10"
+            >
+              Logout
+            </button>
+          </header>
 
-        {children}
-      </section>
+          {children}
+        </section>
+      </div>
     </main>
   )
-}
-
-const shell: React.CSSProperties = {
-  minHeight: '100vh',
-  background: '#f8fafc',
-  display: 'grid',
-  gridTemplateColumns: '280px 1fr',
-  fontFamily:
-    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Arial',
-}
-
-const sidebar: React.CSSProperties = {
-  background: 'linear-gradient(180deg, #020617, #1e293b)',
-  color: 'white',
-  padding: 24,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 28,
-}
-
-const eyebrow: React.CSSProperties = {
-  color: '#38bdf8',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  fontWeight: 900,
-  fontSize: 12,
-  margin: 0,
-}
-
-const brand: React.CSSProperties = {
-  margin: '6px 0 0',
-  fontSize: 24,
-}
-
-const nav: React.CSSProperties = {
-  display: 'grid',
-  gap: 8,
-}
-
-const navLink: React.CSSProperties = {
-  color: '#e0f2fe',
-  textDecoration: 'none',
-  fontWeight: 800,
-  padding: '12px 14px',
-  borderRadius: 12,
-  border: '1px solid rgba(255,255,255,0.12)',
-}
-
-const backLink: React.CSSProperties = {
-  ...navLink,
-  marginTop: 'auto',
-  textAlign: 'center',
-  background: 'white',
-  color: '#020617',
-}
-
-const workspace: React.CSSProperties = {
-  padding: 28,
-}
-
-const header: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 22,
-  padding: 22,
-  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 16,
-  marginBottom: 22,
-}
-
-const muted: React.CSSProperties = {
-  color: '#64748b',
-  margin: 0,
-  lineHeight: 1.5,
-}
-
-const businessName: React.CSSProperties = {
-  margin: '4px 0 0',
-  color: '#020617',
-}
-
-const logoutButton: React.CSSProperties = {
-  padding: '11px 14px',
-  background: '#020617',
-  color: 'white',
-  border: 'none',
-  borderRadius: 12,
-  cursor: 'pointer',
-  fontWeight: 900,
-}
-
-const loadingPage: React.CSSProperties = {
-  minHeight: '100vh',
-  background: '#f8fafc',
-  padding: 32,
-  fontFamily:
-    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Arial',
 }

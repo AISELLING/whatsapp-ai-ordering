@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { GlowCard, StatCard, StatusBadge } from '@/components/tek9'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
 type OrderItem = {
@@ -72,111 +73,204 @@ export default function BusinessDashboardPage() {
     .filter((order) => order.payment_status === 'paid')
     .reduce((sum, order) => sum + Number(order.subtotal || 0), 0)
 
+  const activeChats = new Set(
+    orders
+      .filter(
+        (order) =>
+          !['completed', 'rejected'].includes(order.order_status || 'new')
+      )
+      .map((order) => order.customer_phone || order.id)
+  ).size
+
+  const topProducts = useMemo(() => {
+    const totals = new Map<string, number>()
+
+    orders.forEach((order) => {
+      ;(order.items || []).forEach((item) => {
+        const name = item.name || 'Item'
+        totals.set(name, (totals.get(name) || 0) + Number(item.quantity || 1))
+      })
+    })
+
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+  }, [orders])
+
   const encodedBusinessId = encodeURIComponent(businessId)
-  const recentOrders = orders.slice(0, 5)
+  const recentOrders = orders.slice(0, 6)
 
   return (
     <>
-      <section style={toolbar}>
+      <section className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 style={pageTitle}>Dashboard</h1>
-          <p style={muted}>Live order performance for this business.</p>
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">
+            Workspace
+          </p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-white">
+            Dashboard
+          </h1>
+          <p className="mt-2 text-slate-400">
+            Live order performance for this business.
+          </p>
         </div>
 
-        <div style={actions}>
+        <div className="flex flex-wrap gap-3">
           <a
             href={`/app/businesses/${encodedBusinessId}/orders`}
-            style={primaryButton}
+            className="rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-violet-300"
           >
             View All Orders
           </a>
-          <a href={`/menu?business_id=${encodedBusinessId}`} style={secondaryButton}>
+          <a
+            href={`/app/businesses/${encodedBusinessId}/menu`}
+            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-white transition hover:bg-white/10"
+          >
             Manage Menu
           </a>
           <a
-            href={`/menu-import?business_id=${encodedBusinessId}`}
-            style={secondaryButton}
+            href={`/app/businesses/${encodedBusinessId}/menu/import`}
+            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-white transition hover:bg-white/10"
           >
             Import Menu
           </a>
         </div>
       </section>
 
-      {loading && <p style={notice}>Loading dashboard...</p>}
-      {error && <p style={errorText}>{error}</p>}
+      {loading && (
+        <p className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-slate-300">
+          Loading dashboard...
+        </p>
+      )}
+      {error && (
+        <p className="mb-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4 text-rose-100">
+          {error}
+        </p>
+      )}
 
-      <section style={statsGrid}>
-        <div style={card}>
-          <p style={statLabel}>Revenue</p>
-          <strong style={statValue}>£{revenue.toFixed(2)}</strong>
-          <span style={statHint}>Paid orders only</span>
-        </div>
-
-        <div style={card}>
-          <p style={statLabel}>Orders</p>
-          <strong style={statValue}>{orders.length}</strong>
-          <span style={statHint}>Total orders loaded</span>
-        </div>
-
-        <div style={card}>
-          <p style={statLabel}>Business ID</p>
-          <strong style={businessIdText}>{businessId}</strong>
-          <span style={statHint}>Workspace identifier</span>
-        </div>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Revenue"
+          value={`£${revenue.toFixed(2)}`}
+          hint="Paid orders only"
+        />
+        <StatCard
+          label="Orders"
+          value={orders.length}
+          hint="Total orders loaded"
+        />
+        <StatCard
+          label="Active chats"
+          value={activeChats}
+          hint="Open customer conversations"
+        />
+        <StatCard
+          label="Business ID"
+          value={<span className="break-all text-lg">{businessId}</span>}
+          hint="Workspace identifier"
+        />
       </section>
 
-      <section id="orders" style={ordersSection}>
-        <div style={sectionHeader}>
-          <div>
-            <h2 style={sectionTitle}>Recent Orders</h2>
-            <p style={muted}>The latest orders for this business.</p>
-          </div>
-
-          <a
-            href={`/app/businesses/${encodedBusinessId}/orders`}
-            style={secondaryButton}
-          >
-            Full Orders Page
-          </a>
-        </div>
-
-        {!loading && recentOrders.length === 0 ? (
-          <div style={emptyState}>
-            <h3 style={{ marginTop: 0 }}>No orders yet</h3>
-            <p style={muted}>
-              Orders will appear here once customers start placing them through
-              your WhatsApp AI ordering flow.
-            </p>
+      <section className="mt-6 grid gap-5 xl:grid-cols-[1fr_360px]">
+        <GlowCard className="overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-black text-white">Recent Orders</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                The latest WhatsApp orders in this workspace.
+              </p>
+            </div>
             <a
-              href={`/menu-import?business_id=${encodedBusinessId}`}
-              style={primaryButton}
+              href={`/app/businesses/${encodedBusinessId}/orders`}
+              className="text-sm font-black text-cyan-200"
             >
-              Import Menu
+              Full Orders Page
             </a>
           </div>
-        ) : (
-          <div style={orderList}>
-            {recentOrders.map((order) => (
-              <article key={order.id} style={orderCard}>
-                <div>
-                  <strong>
-                    {order.customer_profile_name ||
-                      order.customer_phone ||
-                      `Order ${order.id.slice(0, 8)}`}
-                  </strong>
-                  <p style={muted}>
-                    {formatItems(order.items)} · {order.order_status || 'new'}
-                  </p>
-                </div>
 
-                <div style={orderMeta}>
-                  <span style={statusBadge}>{order.payment_status || 'pending'}</span>
-                  <strong>£{Number(order.subtotal || 0).toFixed(2)}</strong>
+          {!loading && recentOrders.length === 0 ? (
+            <div className="p-6">
+              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-6">
+                <h3 className="text-lg font-black text-white">No orders yet</h3>
+                <p className="mt-2 text-slate-400">
+                  Orders will appear here once customers start placing them
+                  through your WhatsApp AI ordering flow.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="border-b border-white/10 text-xs uppercase tracking-[0.18em] text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4">Customer</th>
+                    <th className="px-5 py-4">Items</th>
+                    <th className="px-5 py-4">Status</th>
+                    <th className="px-5 py-4">Payment</th>
+                    <th className="px-5 py-4 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {recentOrders.map((order) => (
+                    <tr key={order.id} className="text-slate-300">
+                      <td className="px-5 py-4">
+                        <p className="font-bold text-white">
+                          {order.customer_profile_name ||
+                            order.customer_phone ||
+                            `Order ${order.id.slice(0, 8)}`}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {formatDate(order.created_at)}
+                        </p>
+                      </td>
+                      <td className="px-5 py-4">{formatItems(order.items)}</td>
+                      <td className="px-5 py-4">
+                        <StatusBadge status={order.order_status || 'new'} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusBadge status={order.payment_status || 'pending'} />
+                      </td>
+                      <td className="px-5 py-4 text-right font-black text-white">
+                        £{Number(order.subtotal || 0).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </GlowCard>
+
+        <GlowCard className="p-5">
+          <h2 className="text-xl font-black text-white">Top Products</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Based on quantities in loaded orders.
+          </p>
+          <div className="mt-5 grid gap-3">
+            {topProducts.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                Top products will appear after orders arrive.
+              </p>
+            ) : (
+              topProducts.map(([name, quantity], index) => (
+                <div
+                  key={name}
+                  className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+                >
+                  <div>
+                    <p className="text-xs font-black text-cyan-200">
+                      #{index + 1}
+                    </p>
+                    <p className="mt-1 font-bold text-white">{name}</p>
+                  </div>
+                  <span className="rounded-full border border-violet-300/20 bg-violet-400/10 px-3 py-1 text-sm font-black text-violet-100">
+                    {quantity}
+                  </span>
                 </div>
-              </article>
-            ))}
+              ))
+            )}
           </div>
-        )}
+        </GlowCard>
       </section>
     </>
   )
@@ -191,159 +285,13 @@ function formatItems(items?: OrderItem[]) {
     .join(', ')
 }
 
-const toolbar: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  alignItems: 'center',
-  marginBottom: 20,
-}
+function formatDate(value?: string) {
+  if (!value) return 'Unknown date'
 
-const pageTitle: React.CSSProperties = {
-  margin: 0,
-  color: '#020617',
-}
-
-const sectionTitle: React.CSSProperties = {
-  margin: 0,
-  color: '#020617',
-}
-
-const muted: React.CSSProperties = {
-  color: '#64748b',
-  margin: '5px 0',
-  lineHeight: 1.5,
-}
-
-const actions: React.CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  flexWrap: 'wrap',
-  justifyContent: 'flex-end',
-}
-
-const primaryButton: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '11px 14px',
-  background: '#020617',
-  color: 'white',
-  textDecoration: 'none',
-  borderRadius: 12,
-  fontWeight: 900,
-  border: 'none',
-}
-
-const secondaryButton: React.CSSProperties = {
-  ...primaryButton,
-  background: '#e0f2fe',
-  color: '#075985',
-}
-
-const notice: React.CSSProperties = {
-  color: '#64748b',
-  marginBottom: 16,
-}
-
-const errorText: React.CSSProperties = {
-  color: '#991b1b',
-  background: '#fee2e2',
-  border: '1px solid #fecaca',
-  borderRadius: 12,
-  padding: 12,
-  marginBottom: 16,
-}
-
-const statsGrid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-  gap: 16,
-  marginBottom: 20,
-}
-
-const card: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 20,
-  padding: 20,
-  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
-}
-
-const statLabel: React.CSSProperties = {
-  color: '#64748b',
-  margin: 0,
-  fontWeight: 800,
-  fontSize: 13,
-}
-
-const statValue: React.CSSProperties = {
-  display: 'block',
-  color: '#020617',
-  fontSize: 34,
-  margin: '8px 0',
-}
-
-const businessIdText: React.CSSProperties = {
-  display: 'block',
-  color: '#020617',
-  fontSize: 16,
-  margin: '14px 0',
-  overflowWrap: 'anywhere',
-}
-
-const statHint: React.CSSProperties = {
-  color: '#64748b',
-  fontSize: 13,
-}
-
-const ordersSection: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 22,
-  padding: 24,
-  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
-}
-
-const sectionHeader: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  alignItems: 'center',
-  marginBottom: 16,
-}
-
-const emptyState: React.CSSProperties = {
-  border: '1px dashed #cbd5e1',
-  borderRadius: 18,
-  padding: 24,
-  background: '#f8fafc',
-}
-
-const orderList: React.CSSProperties = {
-  display: 'grid',
-  gap: 12,
-}
-
-const orderCard: React.CSSProperties = {
-  border: '1px solid #e2e8f0',
-  borderRadius: 16,
-  padding: 16,
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  alignItems: 'center',
-}
-
-const orderMeta: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-}
-
-const statusBadge: React.CSSProperties = {
-  background: '#e0f2fe',
-  color: '#075985',
-  borderRadius: 999,
-  padding: '6px 10px',
-  fontSize: 12,
-  fontWeight: 900,
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }

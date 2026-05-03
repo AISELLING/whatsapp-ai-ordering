@@ -1,60 +1,31 @@
 'use client'
 
 import { useParams } from 'next/navigation'
+import { GlowCard } from '@/components/tek9'
 
 export default function MenuImportPage() {
   const params = useParams<{ businessId: string }>()
   const businessId = encodeURIComponent(params.businessId)
 
   return (
-    <section style={panel}>
-      <p style={eyebrow}>Menu Import</p>
-      <h1 style={title}>Import Menu</h1>
-      <p style={muted}>
-        The canonical SaaS menu import flow will live here. For now, the
-        existing importer remains available.
+    <GlowCard className="p-6">
+      <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">
+        Menu Import
       </p>
-      <a href={`/menu-import?business_id=${businessId}`} style={primaryButton}>
+      <h1 className="mt-3 text-4xl font-black tracking-tight text-white">
+        Import Menu
+      </h1>
+      <p className="mt-3 max-w-2xl leading-7 text-slate-400">
+        The canonical SaaS menu import flow will live here. For now, the
+        existing importer remains available and keeps the secured API flow
+        intact.
+      </p>
+      <a
+        href={`/menu-import?business_id=${businessId}`}
+        className="mt-6 inline-flex rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-violet-300"
+      >
         Open Existing Menu Import
       </a>
-    </section>
+    </GlowCard>
   )
-}
-
-const panel: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 22,
-  padding: 24,
-  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
-}
-
-const eyebrow: React.CSSProperties = {
-  color: '#075985',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  fontWeight: 900,
-  fontSize: 12,
-  margin: 0,
-}
-
-const title: React.CSSProperties = {
-  color: '#020617',
-  margin: '8px 0',
-}
-
-const muted: React.CSSProperties = {
-  color: '#64748b',
-  lineHeight: 1.5,
-}
-
-const primaryButton: React.CSSProperties = {
-  display: 'inline-block',
-  marginTop: 12,
-  padding: '11px 14px',
-  background: '#020617',
-  color: 'white',
-  textDecoration: 'none',
-  borderRadius: 12,
-  fontWeight: 900,
 }

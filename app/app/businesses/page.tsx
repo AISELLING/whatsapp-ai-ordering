@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import SaasAppHeader from '@/components/SaasAppHeader'
+import { GlowCard, StatusBadge } from '@/components/tek9'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
 type Business = {
@@ -51,197 +52,104 @@ export default function BusinessesPage() {
   }, [router])
 
   return (
-    <main style={page}>
+    <main className="min-h-screen bg-[#0B0F1A] px-5 py-6 text-white sm:px-8">
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_15%_12%,rgba(168,85,247,0.18),transparent_28%),radial-gradient(circle_at_80%_15%,rgba(34,211,238,0.12),transparent_26%)]" />
       <SaasAppHeader title="Businesses" />
 
-      <section style={toolbar}>
+      <section className="mx-auto mb-6 flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 style={sectionTitle}>Your Businesses</h2>
-          <p style={muted}>
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">
+            Multi-business workspace
+          </p>
+          <h2 className="mt-3 text-4xl font-black tracking-tight text-white">
+            Your Businesses
+          </h2>
+          <p className="mt-2 text-slate-400">
             Choose a business to manage orders, menus and setup.
           </p>
         </div>
 
-        <a href="/app/businesses/new" style={primaryButton}>
+        <a
+          href="/onboarding"
+          className="rounded-2xl bg-violet-400 px-5 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-violet-300"
+        >
           Create New Business
         </a>
       </section>
 
-      {loading && <p style={notice}>Loading businesses...</p>}
-      {error && <p style={errorText}>{error}</p>}
-
-      {!loading && businesses.length === 0 ? (
-        <section style={emptyState}>
-          <h2 style={{ marginTop: 0 }}>No businesses yet</h2>
-          <p style={muted}>
-            Create your first business to unlock the dashboard, menu manager and
-            WhatsApp AI ordering setup.
+      <section className="mx-auto max-w-7xl">
+        {loading && (
+          <p className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-slate-300">
+            Loading businesses...
           </p>
-          <a href="/app/businesses/new" style={primaryButton}>
-            Create New Business
-          </a>
-        </section>
-      ) : (
-        <section style={grid}>
-          {businesses.map((business) => {
-            const businessId = encodeURIComponent(business.id)
+        )}
+        {error && (
+          <p className="mb-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4 text-rose-100">
+            {error}
+          </p>
+        )}
 
-            return (
-              <article key={business.id} style={card}>
-                <div>
-                  <p style={typeBadge}>
-                    {business.business_type || 'business'}
+        {!loading && businesses.length === 0 ? (
+          <GlowCard className="p-8">
+            <h2 className="text-2xl font-black text-white">No businesses yet</h2>
+            <p className="mt-2 max-w-2xl text-slate-400">
+              Create your first business to unlock the dashboard, menu manager
+              and WhatsApp AI ordering setup.
+            </p>
+            <a
+              href="/onboarding"
+              className="mt-6 inline-flex rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-violet-300"
+            >
+              Create New Business
+            </a>
+          </GlowCard>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {businesses.map((business) => {
+              const businessId = encodeURIComponent(business.id)
+
+              return (
+                <GlowCard key={business.id} className="p-5">
+                  <StatusBadge status={business.business_type || 'business'} />
+                  <h2 className="mt-4 text-2xl font-black text-white">
+                    {business.name}
+                  </h2>
+                  <p className="mt-2 break-all text-sm text-slate-500">
+                    {business.slug || business.id}
                   </p>
-                  <h2 style={businessName}>{business.name}</h2>
-                  <p style={muted}>{business.slug || business.id}</p>
-                </div>
 
-                <div style={actions}>
-                  <a
-                    href={`/app/businesses/${businessId}/dashboard`}
-                    style={primaryButton}
-                  >
-                    Dashboard
-                  </a>
-                  <a
-                    href={`/menu?business_id=${businessId}`}
-                    style={secondaryButton}
-                  >
-                    Menu
-                  </a>
-                  <a
-                    href={`/menu-import?business_id=${businessId}`}
-                    style={secondaryButton}
-                  >
-                    Import Menu
-                  </a>
-                  <a href="#" style={disabledButton}>
-                    Settings
-                  </a>
-                </div>
-              </article>
-            )
-          })}
-        </section>
-      )}
+                  <div className="mt-6 grid grid-cols-2 gap-2">
+                    <a
+                      href={`/app/businesses/${businessId}/dashboard`}
+                      className="rounded-2xl bg-violet-400 px-4 py-3 text-center text-sm font-black text-slate-950 transition hover:bg-violet-300"
+                    >
+                      Dashboard
+                    </a>
+                    <a
+                      href={`/app/businesses/${businessId}/menu`}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm font-black text-white transition hover:bg-white/10"
+                    >
+                      Menu
+                    </a>
+                    <a
+                      href={`/app/businesses/${businessId}/menu/import`}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm font-black text-white transition hover:bg-white/10"
+                    >
+                      Import Menu
+                    </a>
+                    <a
+                      href={`/app/businesses/${businessId}/settings`}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm font-black text-white transition hover:bg-white/10"
+                    >
+                      Settings
+                    </a>
+                  </div>
+                </GlowCard>
+              )
+            })}
+          </div>
+        )}
+      </section>
     </main>
   )
-}
-
-const page: React.CSSProperties = {
-  minHeight: '100vh',
-  background: '#f8fafc',
-  padding: 32,
-  fontFamily:
-    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Arial',
-}
-
-const toolbar: React.CSSProperties = {
-  maxWidth: 1200,
-  margin: '0 auto 20px',
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  alignItems: 'center',
-}
-
-const sectionTitle: React.CSSProperties = {
-  margin: 0,
-  color: '#020617',
-}
-
-const muted: React.CSSProperties = {
-  color: '#64748b',
-  margin: '5px 0',
-  lineHeight: 1.5,
-}
-
-const notice: React.CSSProperties = {
-  maxWidth: 1200,
-  margin: '0 auto 16px',
-  color: '#64748b',
-}
-
-const errorText: React.CSSProperties = {
-  maxWidth: 1200,
-  margin: '0 auto 16px',
-  color: '#991b1b',
-  background: '#fee2e2',
-  border: '1px solid #fecaca',
-  borderRadius: 12,
-  padding: 12,
-}
-
-const grid: React.CSSProperties = {
-  maxWidth: 1200,
-  margin: '0 auto',
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-  gap: 16,
-}
-
-const card: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 22,
-  padding: 22,
-  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
-  display: 'grid',
-  gap: 20,
-}
-
-const businessName: React.CSSProperties = {
-  margin: '8px 0',
-  color: '#020617',
-}
-
-const typeBadge: React.CSSProperties = {
-  display: 'inline-block',
-  background: '#e0f2fe',
-  color: '#075985',
-  borderRadius: 999,
-  padding: '6px 10px',
-  fontSize: 12,
-  fontWeight: 900,
-  margin: 0,
-}
-
-const actions: React.CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  flexWrap: 'wrap',
-}
-
-const primaryButton: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '11px 14px',
-  background: '#020617',
-  color: 'white',
-  textDecoration: 'none',
-  borderRadius: 12,
-  fontWeight: 900,
-  border: 'none',
-}
-
-const secondaryButton: React.CSSProperties = {
-  ...primaryButton,
-  background: '#e0f2fe',
-  color: '#075985',
-}
-
-const disabledButton: React.CSSProperties = {
-  ...primaryButton,
-  background: '#f1f5f9',
-  color: '#64748b',
-  cursor: 'not-allowed',
-}
-
-const emptyState: React.CSSProperties = {
-  maxWidth: 1200,
-  margin: '0 auto',
-  background: 'white',
-  border: '1px dashed #cbd5e1',
-  borderRadius: 22,
-  padding: 28,
-  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
 }

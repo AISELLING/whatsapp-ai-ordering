@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { GlowCard, Tek9Logo } from '@/components/tek9'
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 
 function getErrorMessage(error: any, fallback: string) {
@@ -84,185 +85,105 @@ export default function SignupPage() {
 
   if (checkingSession) {
     return (
-      <main style={page}>
-        <section style={card}>
-          <p style={eyebrow}>WhatsApp AI Ordering SaaS</p>
-          <h1 style={title}>Checking session...</h1>
-        </section>
+      <main className="grid min-h-screen place-items-center bg-[#0B0F1A] p-6 text-white">
+        <GlowCard className="w-full max-w-md p-8 text-center">
+          <Tek9Logo className="justify-center" />
+          <h1 className="mt-8 text-2xl font-black">Checking session...</h1>
+        </GlowCard>
       </main>
     )
   }
 
   return (
-    <main style={page}>
-      <section style={card}>
-        <div style={brandPanel}>
-          <p style={eyebrow}>WhatsApp AI Ordering SaaS</p>
-          <h1 style={title}>Create your account</h1>
-          <p style={subtitle}>
-            Launch a secure workspace for onboarding businesses, importing
-            menus and managing AI-assisted orders.
-          </p>
-        </div>
-
-        <form onSubmit={signup} style={form}>
+    <main className="min-h-screen bg-[#0B0F1A] p-5 text-white">
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_18%_16%,rgba(168,85,247,0.22),transparent_32%),radial-gradient(circle_at_82%_20%,rgba(34,211,238,0.14),transparent_30%)]" />
+      <section className="mx-auto grid min-h-[calc(100vh-40px)] w-full max-w-6xl items-center gap-6 lg:grid-cols-[1fr_440px]">
+        <GlowCard className="hidden h-full min-h-[620px] flex-col justify-between p-10 lg:flex">
           <div>
-            <h2 style={formTitle}>Sign Up</h2>
-            <p style={muted}>Use your email and password to get started.</p>
+            <Tek9Logo />
+            <span className="mt-12 inline-flex rounded-full border border-violet-300/20 bg-violet-400/10 px-4 py-2 text-sm font-bold text-violet-100">
+              Start your 14-day trial
+            </span>
+            <h1 className="mt-6 max-w-xl text-5xl font-black leading-tight tracking-tight">
+              Launch WhatsApp ordering with tek9.
+            </h1>
+            <p className="mt-5 max-w-lg text-lg leading-8 text-slate-300">
+              Create your account, add a business, import products and start
+              turning conversations into managed orders.
+            </p>
           </div>
+          <div className="grid grid-cols-3 gap-3 text-sm text-slate-300">
+            {['No Coding', '5 Min Setup', 'AI Ready'].map((item) => (
+              <div
+                key={item}
+                className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 font-bold"
+              >
+                {item}
+              </div>
+            ))}
+          </div>
+        </GlowCard>
 
-          {error && <p style={errorStyle}>{error}</p>}
+        <GlowCard className="p-6 sm:p-8">
+          <div className="mb-8 lg:hidden">
+            <Tek9Logo />
+          </div>
+          <form onSubmit={signup} className="grid gap-4">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">
+                Signup
+              </p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-white">
+                Create your tek9 account
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Use your email and password to get started.
+              </p>
+            </div>
 
-          <label style={label}>Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-            style={input}
-            placeholder="you@example.com"
-          />
+            {error && (
+              <p className="rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4 text-sm font-semibold text-rose-100">
+                {error}
+              </p>
+            )}
 
-          <label style={label}>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            style={input}
-            placeholder="Choose a password"
-          />
+            <label className="text-sm font-bold text-slate-200">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-violet-300/50"
+              placeholder="you@example.com"
+            />
 
-          <button type="submit" disabled={loading} style={button}>
-            {loading ? 'Signing up...' : 'Sign Up'}
-          </button>
+            <label className="text-sm font-bold text-slate-200">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-violet-300/50"
+              placeholder="Choose a password"
+            />
 
-          <p style={footerText}>
-            Already have an account? <a href="/login" style={link}>Login</a>
-          </p>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-2 rounded-2xl bg-gradient-to-r from-violet-400 to-cyan-300 px-5 py-4 text-sm font-black text-slate-950 transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? 'Signing up...' : 'Sign Up'}
+            </button>
+
+            <p className="text-center text-sm text-slate-400">
+              Already have an account?{' '}
+              <a href="/login" className="font-black text-violet-200">
+                Login
+              </a>
+            </p>
+          </form>
+        </GlowCard>
       </section>
     </main>
   )
-}
-
-const page: React.CSSProperties = {
-  minHeight: '100vh',
-  background: '#f8fafc',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 24,
-  fontFamily:
-    'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Arial',
-}
-
-const card: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 960,
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 24,
-  boxShadow: '0 24px 60px rgba(15, 23, 42, 0.12)',
-  display: 'grid',
-  gridTemplateColumns: 'minmax(280px, 1fr) minmax(320px, 420px)',
-  overflow: 'hidden',
-}
-
-const brandPanel: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #020617, #1e293b)',
-  color: 'white',
-  padding: 40,
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'center',
-}
-
-const eyebrow: React.CSSProperties = {
-  color: '#38bdf8',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  fontWeight: 800,
-  fontSize: 12,
-  margin: 0,
-}
-
-const title: React.CSSProperties = {
-  margin: '10px 0',
-  fontSize: 42,
-  lineHeight: 1.05,
-}
-
-const subtitle: React.CSSProperties = {
-  margin: 0,
-  color: '#cbd5e1',
-  lineHeight: 1.6,
-  maxWidth: 440,
-}
-
-const form: React.CSSProperties = {
-  padding: 40,
-  display: 'grid',
-  gap: 12,
-  alignContent: 'center',
-}
-
-const formTitle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 28,
-  color: '#020617',
-}
-
-const muted: React.CSSProperties = {
-  color: '#64748b',
-  margin: '6px 0 8px',
-  lineHeight: 1.5,
-}
-
-const label: React.CSSProperties = {
-  fontWeight: 800,
-  fontSize: 13,
-  color: '#0f172a',
-}
-
-const input: React.CSSProperties = {
-  width: '100%',
-  padding: 13,
-  borderRadius: 12,
-  border: '1px solid #cbd5e1',
-  fontSize: 15,
-  boxSizing: 'border-box',
-  outlineColor: '#38bdf8',
-}
-
-const button: React.CSSProperties = {
-  marginTop: 8,
-  padding: 14,
-  background: '#020617',
-  color: 'white',
-  border: 'none',
-  borderRadius: 14,
-  cursor: 'pointer',
-  fontWeight: 900,
-  fontSize: 15,
-}
-
-const errorStyle: React.CSSProperties = {
-  color: '#991b1b',
-  background: '#fee2e2',
-  border: '1px solid #fecaca',
-  borderRadius: 12,
-  padding: 12,
-  margin: 0,
-}
-
-const footerText: React.CSSProperties = {
-  color: '#64748b',
-  margin: '8px 0 0',
-}
-
-const link: React.CSSProperties = {
-  color: '#075985',
-  fontWeight: 900,
-  textDecoration: 'none',
 }

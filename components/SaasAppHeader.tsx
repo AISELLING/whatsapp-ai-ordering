@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { Tek9Logo } from '@/components/tek9'
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser'
 
 type SaasAppHeaderProps = {
@@ -17,67 +18,28 @@ export default function SaasAppHeader({ title }: SaasAppHeaderProps) {
   }
 
   return (
-    <header style={header}>
+    <header className="mx-auto mb-6 flex w-full max-w-7xl flex-col gap-5 rounded-2xl border border-white/10 bg-white/[0.045] p-5 text-white backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p style={eyebrow}>WhatsApp AI Ordering SaaS</p>
-        <h1 style={titleStyle}>{title || 'Businesses'}</h1>
+        <Tek9Logo />
+        {title && (
+          <h1 className="mt-5 text-3xl font-black tracking-tight">{title}</h1>
+        )}
       </div>
 
-      <nav style={nav}>
-        <a href="#" style={navLink}>Account</a>
-        <button onClick={logout} style={logoutButton}>Logout</button>
+      <nav className="flex flex-wrap gap-3">
+        <a
+          href="/app/account"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-black text-white transition hover:bg-white/10"
+        >
+          Account
+        </a>
+        <button
+          onClick={logout}
+          className="rounded-2xl bg-violet-400 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-violet-300"
+        >
+          Logout
+        </button>
       </nav>
     </header>
   )
-}
-
-const header: React.CSSProperties = {
-  maxWidth: 1200,
-  margin: '0 auto 24px',
-  background: 'linear-gradient(135deg, #020617, #1e293b)',
-  color: 'white',
-  borderRadius: 24,
-  padding: 28,
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 20,
-  alignItems: 'center',
-}
-
-const eyebrow: React.CSSProperties = {
-  color: '#38bdf8',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  fontWeight: 800,
-  fontSize: 12,
-  margin: 0,
-}
-
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 36,
-}
-
-const nav: React.CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  alignItems: 'center',
-  flexWrap: 'wrap',
-  justifyContent: 'flex-end',
-}
-
-const navLink: React.CSSProperties = {
-  color: '#e0f2fe',
-  textDecoration: 'none',
-  fontWeight: 800,
-  padding: '10px 12px',
-  borderRadius: 12,
-  border: '1px solid rgba(255,255,255,0.12)',
-}
-
-const logoutButton: React.CSSProperties = {
-  ...navLink,
-  background: 'white',
-  color: '#020617',
-  cursor: 'pointer',
 }

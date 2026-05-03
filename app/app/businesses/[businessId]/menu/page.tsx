@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { GlowCard, StatusBadge } from '@/components/tek9'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
 type Product = {
@@ -214,9 +215,7 @@ export default function MenuPage() {
 
     if (data.success) {
       setProducts((current) =>
-        current.map((item) =>
-          item.id === product.id ? data.product : item
-        )
+        current.map((item) => (item.id === product.id ? data.product : item))
       )
       return
     }
@@ -226,323 +225,213 @@ export default function MenuPage() {
 
   return (
     <>
-      <section style={toolbar}>
+      <section className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 style={pageTitle}>Menu</h1>
-          <p style={muted}>Manage products available to your AI ordering flow.</p>
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">
+            Product system
+          </p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-white">
+            Menu
+          </h1>
+          <p className="mt-2 text-slate-400">
+            Manage products available to your AI ordering flow.
+          </p>
         </div>
+        <StatusBadge status={`${products.length} products`} />
       </section>
 
-      {message && <p style={successText}>{message}</p>}
-      {error && <p style={errorText}>{error}</p>}
+      {message && (
+        <p className="mb-4 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-emerald-100">
+          {message}
+        </p>
+      )}
+      {error && (
+        <p className="mb-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4 text-rose-100">
+          {error}
+        </p>
+      )}
 
-      <section style={layout}>
-        <form onSubmit={saveProduct} style={panel}>
-          <h2 style={panelTitle}>{form.id ? 'Edit Product' : 'Add Product'}</h2>
+      <section className="grid gap-5 xl:grid-cols-[390px_1fr]">
+        <GlowCard className="p-5">
+          <h2 className="text-2xl font-black text-white">
+            {form.id ? 'Edit Product' : 'Add Product'}
+          </h2>
+          <form onSubmit={saveProduct} className="mt-5 grid gap-4">
+            <Field label="Name">
+              <input
+                value={form.name}
+                onChange={(event) =>
+                  setForm({ ...form, name: event.target.value })
+                }
+                className={inputClass}
+                required
+              />
+            </Field>
 
-          <label style={label}>Name</label>
-          <input
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-            style={input}
-            required
-          />
+            <Field label="Description">
+              <textarea
+                value={form.description}
+                onChange={(event) =>
+                  setForm({ ...form, description: event.target.value })
+                }
+                className={`${inputClass} min-h-28 resize-y`}
+              />
+            </Field>
 
-          <label style={label}>Description</label>
-          <textarea
-            value={form.description}
-            onChange={(event) =>
-              setForm({ ...form, description: event.target.value })
-            }
-            style={textarea}
-            rows={4}
-          />
+            <Field label="Category">
+              <input
+                value={form.category}
+                onChange={(event) =>
+                  setForm({ ...form, category: event.target.value })
+                }
+                className={inputClass}
+              />
+            </Field>
 
-          <label style={label}>Category</label>
-          <input
-            value={form.category}
-            onChange={(event) =>
-              setForm({ ...form, category: event.target.value })
-            }
-            style={input}
-          />
+            <Field label="Price">
+              <input
+                type="number"
+                step="0.01"
+                value={form.price}
+                onChange={(event) =>
+                  setForm({ ...form, price: event.target.value })
+                }
+                className={inputClass}
+                required
+              />
+            </Field>
 
-          <label style={label}>Price</label>
-          <input
-            type="number"
-            step="0.01"
-            value={form.price}
-            onChange={(event) => setForm({ ...form, price: event.target.value })}
-            style={input}
-            required
-          />
+            <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-200">
+              Available
+              <input
+                type="checkbox"
+                checked={form.is_available}
+                onChange={(event) =>
+                  setForm({ ...form, is_available: event.target.checked })
+                }
+                className="h-5 w-5 accent-violet-400"
+              />
+            </label>
 
-          <label style={checkboxLabel}>
-            <input
-              type="checkbox"
-              checked={form.is_available}
-              onChange={(event) =>
-                setForm({ ...form, is_available: event.target.checked })
-              }
-            />
-            Available
-          </label>
-
-          <div style={formActions}>
-            <button type="submit" disabled={saving} style={primaryButton}>
-              {saving ? 'Saving...' : form.id ? 'Save Changes' : 'Add Product'}
-            </button>
-            {form.id && (
-              <button type="button" onClick={resetForm} style={secondaryButton}>
-                Cancel
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? 'Saving...' : form.id ? 'Save Changes' : 'Add Product'}
               </button>
-            )}
-          </div>
-        </form>
+              {form.id && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-white transition hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+        </GlowCard>
 
-        <section style={panel}>
-          <div style={sectionHeader}>
+        <GlowCard className="p-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 style={panelTitle}>Products</h2>
-              <p style={muted}>{products.length} products loaded</p>
+              <h2 className="text-2xl font-black text-white">Products</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                {products.length} products loaded
+              </p>
             </div>
           </div>
 
-          {loading && <p style={muted}>Loading products...</p>}
+          {loading && <p className="text-slate-400">Loading products...</p>}
 
           {!loading && products.length === 0 ? (
-            <div style={emptyState}>
-              <h3 style={{ marginTop: 0 }}>No products yet</h3>
-              <p style={muted}>Add your first product to start building a menu.</p>
+            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-6">
+              <h3 className="text-lg font-black text-white">No products yet</h3>
+              <p className="mt-2 text-slate-400">
+                Add your first product to start building a menu.
+              </p>
             </div>
           ) : (
-            <div style={productList}>
+            <div className="grid gap-3">
               {products.map((product) => (
-                <article key={product.id} style={productCard}>
-                  <div>
-                    <p style={categoryBadge}>{product.category || 'Uncategorised'}</p>
-                    <h3 style={productName}>{product.name}</h3>
-                    <p style={muted}>{product.description || 'No description'}</p>
-                    <strong>£{Number(product.price || 0).toFixed(2)}</strong>
-                  </div>
+                <article
+                  key={product.id}
+                  className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 transition hover:bg-white/[0.06]"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <span className="inline-flex rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-100">
+                        {product.category || 'Uncategorised'}
+                      </span>
+                      <h3 className="mt-3 text-xl font-black text-white">
+                        {product.name}
+                      </h3>
+                      <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+                        {product.description || 'No description'}
+                      </p>
+                      <strong className="mt-3 block text-lg text-white">
+                        £{Number(product.price || 0).toFixed(2)}
+                      </strong>
+                    </div>
 
-                  <div style={productActions}>
-                    <button
-                      type="button"
-                      onClick={() => toggleAvailability(product)}
-                      disabled={updatingId === product.id}
-                      style={{
-                        ...availabilityButton,
-                        ...(product.is_available === false
-                          ? unavailableButton
-                          : availableButton),
-                      }}
-                    >
-                      {product.is_available === false ? 'Unavailable' : 'Available'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => editProduct(product)}
-                      style={secondaryButton}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteProduct(product.id)}
-                      disabled={updatingId === product.id}
-                      style={dangerButton}
-                    >
-                      Delete
-                    </button>
+                    <div className="flex flex-wrap gap-2 lg:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => toggleAvailability(product)}
+                        disabled={updatingId === product.id}
+                        className={`rounded-2xl border px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          product.is_available === false
+                            ? 'border-white/10 bg-white/[0.04] text-slate-400'
+                            : 'border-emerald-300/20 bg-emerald-400/10 text-emerald-100'
+                        }`}
+                      >
+                        {product.is_available === false
+                          ? 'Unavailable'
+                          : 'Available'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => editProduct(product)}
+                        className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-white transition hover:bg-white/10"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteProduct(product.id)}
+                        disabled={updatingId === product.id}
+                        className="rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-2 text-sm font-black text-rose-100 transition hover:bg-rose-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </article>
               ))}
             </div>
           )}
-        </section>
+        </GlowCard>
       </section>
     </>
   )
 }
 
-const toolbar: React.CSSProperties = {
-  marginBottom: 20,
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-bold text-slate-200">
+      {label}
+      {children}
+    </label>
+  )
 }
 
-const pageTitle: React.CSSProperties = {
-  margin: 0,
-  color: '#020617',
-}
-
-const muted: React.CSSProperties = {
-  color: '#64748b',
-  margin: '5px 0',
-  lineHeight: 1.5,
-}
-
-const layout: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: '360px 1fr',
-  gap: 18,
-  alignItems: 'start',
-}
-
-const panel: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 22,
-  padding: 22,
-  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
-}
-
-const panelTitle: React.CSSProperties = {
-  color: '#020617',
-  marginTop: 0,
-}
-
-const label: React.CSSProperties = {
-  display: 'block',
-  fontWeight: 800,
-  fontSize: 13,
-  color: '#0f172a',
-  marginBottom: 6,
-  marginTop: 12,
-}
-
-const input: React.CSSProperties = {
-  width: '100%',
-  padding: 12,
-  borderRadius: 12,
-  border: '1px solid #cbd5e1',
-  fontSize: 15,
-  boxSizing: 'border-box',
-}
-
-const textarea: React.CSSProperties = {
-  ...input,
-  resize: 'vertical',
-}
-
-const checkboxLabel: React.CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  alignItems: 'center',
-  fontWeight: 800,
-  color: '#0f172a',
-  marginTop: 14,
-}
-
-const formActions: React.CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  marginTop: 16,
-}
-
-const primaryButton: React.CSSProperties = {
-  padding: '10px 13px',
-  background: '#020617',
-  color: 'white',
-  border: 'none',
-  borderRadius: 12,
-  cursor: 'pointer',
-  fontWeight: 900,
-}
-
-const secondaryButton: React.CSSProperties = {
-  ...primaryButton,
-  background: '#e0f2fe',
-  color: '#075985',
-}
-
-const dangerButton: React.CSSProperties = {
-  ...primaryButton,
-  background: '#fee2e2',
-  color: '#991b1b',
-}
-
-const successText: React.CSSProperties = {
-  color: '#166534',
-  background: '#dcfce7',
-  border: '1px solid #bbf7d0',
-  borderRadius: 12,
-  padding: 12,
-}
-
-const errorText: React.CSSProperties = {
-  color: '#991b1b',
-  background: '#fee2e2',
-  border: '1px solid #fecaca',
-  borderRadius: 12,
-  padding: 12,
-}
-
-const sectionHeader: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  marginBottom: 16,
-}
-
-const emptyState: React.CSSProperties = {
-  border: '1px dashed #cbd5e1',
-  borderRadius: 18,
-  padding: 20,
-  background: '#f8fafc',
-}
-
-const productList: React.CSSProperties = {
-  display: 'grid',
-  gap: 12,
-}
-
-const productCard: React.CSSProperties = {
-  border: '1px solid #e2e8f0',
-  borderRadius: 18,
-  padding: 16,
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  alignItems: 'center',
-}
-
-const categoryBadge: React.CSSProperties = {
-  display: 'inline-block',
-  background: '#e0f2fe',
-  color: '#075985',
-  borderRadius: 999,
-  padding: '5px 9px',
-  fontSize: 12,
-  fontWeight: 900,
-  margin: 0,
-}
-
-const productName: React.CSSProperties = {
-  margin: '8px 0',
-  color: '#020617',
-}
-
-const productActions: React.CSSProperties = {
-  display: 'flex',
-  gap: 8,
-  flexWrap: 'wrap',
-  justifyContent: 'flex-end',
-}
-
-const availabilityButton: React.CSSProperties = {
-  padding: '10px 13px',
-  border: 'none',
-  borderRadius: 12,
-  cursor: 'pointer',
-  fontWeight: 900,
-}
-
-const availableButton: React.CSSProperties = {
-  background: '#dcfce7',
-  color: '#166534',
-}
-
-const unavailableButton: React.CSSProperties = {
-  background: '#f1f5f9',
-  color: '#64748b',
-}
+const inputClass =
+  'w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-violet-300/50'
