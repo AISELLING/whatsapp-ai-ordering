@@ -23,6 +23,8 @@ export async function GET(req: Request) {
     .from('products')
     .select('*')
     .eq('business_id', businessId)
+    .order('category', { ascending: true })
+    .order('name', { ascending: true })
 
   if (error) {
     return NextResponse.json(
@@ -40,9 +42,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { business_id, name, description, price, category } = body
+    const { business_id, name, description, price, category, is_available } = body
 
-    if (!business_id || !name || !price) {
+    if (!business_id || !name || price === undefined || price === '') {
       return NextResponse.json(
         { error: true, message: 'Missing business_id, name, or price' },
         { status: 400 }
@@ -61,8 +63,9 @@ export async function POST(req: Request) {
         business_id,
         name,
         description: description || '',
-        price,
+        price: Number(price),
         category: category || '',
+        is_available: is_available !== false,
       })
       .select()
       .single()
@@ -81,6 +84,65 @@ export async function POST(req: Request) {
   } catch (error: any) {
     return NextResponse.json(
       { error: true, message: error.message || 'Failed to create product' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json()
+    const {
+      id,
+      business_id,
+      name,
+      description,
+      price,
+      category,
+      is_available,
+    } = body
+
+    if (!id || !business_id || !name || price === undefined || price === '') {
+      return NextResponse.json(
+        { error: true, message: 'Missing id, business_id, name, or price' },
+        { status: 400 }
+      )
+    }
+
+    const access = await requireBusinessAccess(req, business_id)
+
+    if (!access.ok) {
+      return access.response
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('products')
+      .update({
+        name,
+        description: description || '',
+        price: Number(price),
+        category: category || '',
+        is_available: Boolean(is_available),
+      })
+      .eq('id', id)
+      .eq('business_id', business_id)
+      .select()
+      .single()
+
+    if (error) {
+      return NextResponse.json(
+        { error: true, message: error.message },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      product: data,
+    })
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: true, message: error.message || 'Failed to update product' },
       { status: 500 }
     )
   }
