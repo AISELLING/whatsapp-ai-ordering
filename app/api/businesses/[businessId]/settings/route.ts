@@ -35,7 +35,11 @@ export async function GET(req: Request, context: RouteContext) {
           default_prep_time,
           cash_on_delivery_enabled,
           stripe_enabled,
-          ai_greeting_message
+          ai_greeting_message,
+          shopify_shop_domain,
+          shopify_admin_access_token,
+          shopify_connected,
+          shopify_last_sync_at
         `
       )
       .eq('id', businessId)
@@ -94,6 +98,29 @@ export async function PUT(req: Request, context: RouteContext) {
       )
     }
 
+    const { data: existingBusiness, error: existingBusinessError } =
+      await supabaseAdmin
+        .from('businesses')
+        .select('shopify_shop_domain, shopify_admin_access_token, shopify_connected')
+        .eq('id', businessId)
+        .single()
+
+    if (existingBusinessError) {
+      return NextResponse.json(
+        { error: true, message: existingBusinessError.message },
+        { status: 500 }
+      )
+    }
+
+    const shopifyShopDomain = normalizeShopDomain(body.shopify_shop_domain || '')
+    const shopifyAdminAccessToken = String(
+      body.shopify_admin_access_token || ''
+    ).trim()
+    const shopifyCredentialsChanged =
+      shopifyShopDomain !== (existingBusiness.shopify_shop_domain || '') ||
+      shopifyAdminAccessToken !==
+        (existingBusiness.shopify_admin_access_token || '')
+
     const { data: business, error: businessError } = await supabaseAdmin
       .from('businesses')
       .update({
@@ -111,6 +138,11 @@ export async function PUT(req: Request, context: RouteContext) {
         cash_on_delivery_enabled: Boolean(body.cash_on_delivery_enabled),
         stripe_enabled: Boolean(body.stripe_enabled),
         ai_greeting_message: body.ai_greeting_message || '',
+        shopify_shop_domain: shopifyShopDomain,
+        shopify_admin_access_token: shopifyAdminAccessToken,
+        shopify_connected: shopifyCredentialsChanged
+          ? false
+          : Boolean(existingBusiness.shopify_connected),
       })
       .eq('id', businessId)
       .select()
@@ -178,4 +210,25 @@ export async function PUT(req: Request, context: RouteContext) {
       { status: 500 }
     )
   }
+}
+
+function normalizeShopDomain(value: string) {
+  const trimmed = value.trim().toLowerCase()
+
+  if (!trimmed) {
+    return ''
+  }
+
+  const withoutProtocol = trimmed.replace(/^https?:\/\//, '')
+  const host = withoutProtocol.split('/')[0].split('?')[0].trim()
+
+  if (!host) {
+    return ''
+  }
+
+  if (!host.includes('.')) {
+    return `${host}.myshopify.com`
+  }
+
+  return host
 }

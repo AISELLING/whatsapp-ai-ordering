@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { GlowCard, StatusBadge } from '@/components/tek9'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
 
 type SettingsForm = {
@@ -21,6 +22,10 @@ type SettingsForm = {
   cash_on_delivery_enabled: boolean
   stripe_enabled: boolean
   ai_greeting_message: string
+  shopify_shop_domain: string
+  shopify_admin_access_token: string
+  shopify_connected: boolean
+  shopify_last_sync_at: string
 }
 
 const emptyForm: SettingsForm = {
@@ -40,6 +45,10 @@ const emptyForm: SettingsForm = {
   cash_on_delivery_enabled: false,
   stripe_enabled: true,
   ai_greeting_message: 'Hi! What would you like to order today?',
+  shopify_shop_domain: '',
+  shopify_admin_access_token: '',
+  shopify_connected: false,
+  shopify_last_sync_at: '',
 }
 
 export default function SettingsPage() {
@@ -50,8 +59,11 @@ export default function SettingsPage() {
   const [form, setForm] = useState<SettingsForm>(emptyForm)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [testingShopify, setTestingShopify] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [shopifyMessage, setShopifyMessage] = useState('')
+  const [shopifyError, setShopifyError] = useState('')
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -90,6 +102,11 @@ export default function SettingsPage() {
           ),
           stripe_enabled: Boolean(data.business.stripe_enabled),
           ai_greeting_message: data.business.ai_greeting_message || '',
+          shopify_shop_domain: data.business.shopify_shop_domain || '',
+          shopify_admin_access_token:
+            data.business.shopify_admin_access_token || '',
+          shopify_connected: Boolean(data.business.shopify_connected),
+          shopify_last_sync_at: data.business.shopify_last_sync_at || '',
         })
         setError('')
       } else if (res.status === 401) {
@@ -117,6 +134,8 @@ export default function SettingsPage() {
     setSaving(true)
     setMessage('')
     setError('')
+    setShopifyMessage('')
+    setShopifyError('')
 
     const authHeaders = await getAuthHeaders()
 
@@ -139,6 +158,13 @@ export default function SettingsPage() {
 
     if (data.success) {
       setMessage('Settings saved successfully.')
+      updateForm({
+        shopify_shop_domain: data.business.shopify_shop_domain || '',
+        shopify_admin_access_token:
+          data.business.shopify_admin_access_token || '',
+        shopify_connected: Boolean(data.business.shopify_connected),
+        shopify_last_sync_at: data.business.shopify_last_sync_at || '',
+      })
       return
     }
 
@@ -155,323 +181,420 @@ export default function SettingsPage() {
     setError(data.message || 'Failed to save settings')
   }
 
+  const testShopifyConnection = async () => {
+    setTestingShopify(true)
+    setShopifyMessage('')
+    setShopifyError('')
+    setMessage('')
+    setError('')
+
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      router.replace('/login')
+      return
+    }
+
+    const res = await fetch(`/api/businesses/${businessId}/shopify/test`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
+      body: JSON.stringify({
+        shopify_shop_domain: form.shopify_shop_domain,
+        shopify_admin_access_token: form.shopify_admin_access_token,
+      }),
+    })
+    const data = await res.json()
+
+    setTestingShopify(false)
+
+    if (data.success) {
+      updateForm({
+        shopify_shop_domain: data.shopify_shop_domain || form.shopify_shop_domain,
+        shopify_connected: true,
+        shopify_last_sync_at: data.shopify_last_sync_at || '',
+      })
+      setShopifyMessage(
+        data.shop?.name
+          ? `Connected to ${data.shop.name}.`
+          : 'Shopify connection successful.'
+      )
+      return
+    }
+
+    if (res.status === 401) {
+      router.replace('/login')
+      return
+    }
+
+    if (res.status === 403) {
+      router.replace('/app/businesses')
+      return
+    }
+
+    updateForm({ shopify_connected: false })
+    setShopifyError(data.message || 'Failed to test Shopify connection')
+  }
+
   if (loading) {
-    return <p style={notice}>Loading settings...</p>
+    return (
+      <GlowCard className="p-5">
+        <p className="text-slate-300">Loading settings...</p>
+      </GlowCard>
+    )
   }
 
   return (
-    <form onSubmit={saveSettings} style={formLayout}>
-      <section style={panel}>
-        <div style={sectionHeader}>
+    <form onSubmit={saveSettings} className="grid gap-5">
+      <GlowCard className="p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p style={eyebrow}>Settings</p>
-            <h1 style={title}>Business Settings</h1>
-            <p style={muted}>
-              Manage business details, fulfilment, payments and AI messaging.
+            <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">
+              Settings
+            </p>
+            <h1 className="mt-3 text-4xl font-black tracking-tight text-white">
+              Business Settings
+            </h1>
+            <p className="mt-2 max-w-2xl text-slate-400">
+              Manage business details, fulfilment, payments, AI messaging and
+              integrations.
             </p>
           </div>
 
-          <button type="submit" disabled={saving} style={primaryButton}>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
 
-        {message && <p style={successText}>{message}</p>}
-        {error && <p style={errorText}>{error}</p>}
-      </section>
+        {message && (
+          <p className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-emerald-100">
+            {message}
+          </p>
+        )}
+        {error && (
+          <p className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4 text-rose-100">
+            {error}
+          </p>
+        )}
+      </GlowCard>
 
-      <section style={grid}>
-        <div style={panel}>
-          <h2 style={cardTitle}>Business Details</h2>
+      <section className="grid gap-5 xl:grid-cols-2">
+        <GlowCard className="p-5">
+          <h2 className="text-2xl font-black text-white">Business Details</h2>
 
-          <label style={label}>Business name</label>
-          <input
-            value={form.name}
-            onChange={(event) => updateForm({ name: event.target.value })}
-            style={input}
-            required
-          />
+          <div className="mt-5 grid gap-4">
+            <Field label="Business name">
+              <input
+                value={form.name}
+                onChange={(event) => updateForm({ name: event.target.value })}
+                className={inputClass}
+                required
+              />
+            </Field>
 
-          <label style={label}>Business type</label>
-          <select
-            value={form.business_type}
-            onChange={(event) =>
-              updateForm({ business_type: event.target.value })
-            }
-            style={input}
-          >
-            <option value="restaurant">Restaurant / Takeaway</option>
-            <option value="coffee_shop">Coffee Shop</option>
-            <option value="shopify_store">Shopify Store</option>
-            <option value="car_parts">Car Parts Distributor</option>
-            <option value="service_business">Service Business</option>
-            <option value="franchise">Franchise / Multi-branch</option>
-          </select>
+            <Field label="Business type">
+              <select
+                value={form.business_type}
+                onChange={(event) =>
+                  updateForm({ business_type: event.target.value })
+                }
+                className={inputClass}
+              >
+                <option value="restaurant">Restaurant / Takeaway</option>
+                <option value="coffee_shop">Coffee Shop</option>
+                <option value="shopify_store">Shopify Store</option>
+                <option value="car_parts">Car Parts Distributor</option>
+                <option value="service_business">Service Business</option>
+                <option value="franchise">Franchise / Multi-branch</option>
+              </select>
+            </Field>
 
-          <label style={label}>Phone</label>
-          <input
-            value={form.phone}
-            onChange={(event) => updateForm({ phone: event.target.value })}
-            style={input}
-          />
+            <Field label="Phone">
+              <input
+                value={form.phone}
+                onChange={(event) => updateForm({ phone: event.target.value })}
+                className={inputClass}
+              />
+            </Field>
 
-          <label style={label}>WhatsApp number</label>
-          <input
-            value={form.whatsapp_number}
-            onChange={(event) =>
-              updateForm({ whatsapp_number: event.target.value })
-            }
-            style={input}
-          />
+            <Field label="WhatsApp number">
+              <input
+                value={form.whatsapp_number}
+                onChange={(event) =>
+                  updateForm({ whatsapp_number: event.target.value })
+                }
+                className={inputClass}
+              />
+            </Field>
 
-          <label style={label}>Email</label>
-          <input
-            type="email"
-            value={form.email}
-            onChange={(event) => updateForm({ email: event.target.value })}
-            style={input}
-          />
-        </div>
+            <Field label="Email">
+              <input
+                type="email"
+                value={form.email}
+                onChange={(event) => updateForm({ email: event.target.value })}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        </GlowCard>
 
-        <div style={panel}>
-          <h2 style={cardTitle}>Main Branch</h2>
+        <GlowCard className="p-5">
+          <h2 className="text-2xl font-black text-white">Shopify Integration</h2>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <StatusBadge
+              status={form.shopify_connected ? 'connected' : 'not connected'}
+            />
+            {form.shopify_last_sync_at ? (
+              <span className="text-sm text-slate-500">
+                Last tested {formatDate(form.shopify_last_sync_at)}
+              </span>
+            ) : null}
+          </div>
 
-          <label style={label}>Address</label>
-          <input
-            value={form.address}
-            onChange={(event) => updateForm({ address: event.target.value })}
-            style={input}
-          />
+          <div className="mt-5 grid gap-4">
+            <Field label="Shop domain">
+              <input
+                value={form.shopify_shop_domain}
+                onChange={(event) =>
+                  updateForm({
+                    shopify_shop_domain: event.target.value,
+                    shopify_connected: false,
+                  })
+                }
+                placeholder="your-store.myshopify.com"
+                className={inputClass}
+              />
+            </Field>
 
-          <label style={label}>Postcode</label>
-          <input
-            value={form.postcode}
-            onChange={(event) => updateForm({ postcode: event.target.value })}
-            style={input}
-          />
+            <Field label="Admin access token">
+              <input
+                type="password"
+                value={form.shopify_admin_access_token}
+                onChange={(event) =>
+                  updateForm({
+                    shopify_admin_access_token: event.target.value,
+                    shopify_connected: false,
+                  })
+                }
+                placeholder="shpat_..."
+                className={inputClass}
+              />
+            </Field>
+          </div>
 
-          <h2 style={cardTitle}>Fulfilment</h2>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={testShopifyConnection}
+              disabled={testingShopify}
+              className="rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-5 py-3 text-sm font-black text-cyan-100 transition hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {testingShopify ? 'Testing...' : 'Test Connection'}
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Save Shopify Fields
+            </button>
+          </div>
 
-          <label style={checkboxLabel}>
-            <input
-              type="checkbox"
+          {shopifyMessage && (
+            <p className="mt-5 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4 text-emerald-100">
+              {shopifyMessage}
+            </p>
+          )}
+          {shopifyError && (
+            <p className="mt-5 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4 text-rose-100">
+              {shopifyError}
+            </p>
+          )}
+
+          <p className="mt-5 text-sm leading-6 text-slate-500">
+            Phase 1 only connects and verifies the Shopify store. Product sync
+            is intentionally not enabled yet.
+          </p>
+        </GlowCard>
+
+        <GlowCard className="p-5">
+          <h2 className="text-2xl font-black text-white">Main Branch</h2>
+
+          <div className="mt-5 grid gap-4">
+            <Field label="Address">
+              <input
+                value={form.address}
+                onChange={(event) => updateForm({ address: event.target.value })}
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Postcode">
+              <input
+                value={form.postcode}
+                onChange={(event) => updateForm({ postcode: event.target.value })}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <h2 className="mt-8 text-2xl font-black text-white">Fulfilment</h2>
+
+          <div className="mt-5 grid gap-3">
+            <Toggle
+              label="Delivery enabled"
               checked={form.delivery_enabled}
-              onChange={(event) =>
-                updateForm({ delivery_enabled: event.target.checked })
-              }
+              onChange={(checked) => updateForm({ delivery_enabled: checked })}
             />
-            Delivery enabled
-          </label>
-
-          <label style={checkboxLabel}>
-            <input
-              type="checkbox"
+            <Toggle
+              label="Collection enabled"
               checked={form.collection_enabled}
-              onChange={(event) =>
-                updateForm({ collection_enabled: event.target.checked })
-              }
+              onChange={(checked) => updateForm({ collection_enabled: checked })}
             />
-            Collection enabled
-          </label>
-        </div>
+          </div>
+        </GlowCard>
 
-        <div style={panel}>
-          <h2 style={cardTitle}>Delivery Rules</h2>
+        <GlowCard className="p-5">
+          <h2 className="text-2xl font-black text-white">Delivery Rules</h2>
 
-          <label style={label}>Delivery radius</label>
-          <input
-            type="number"
-            step="0.1"
-            value={form.delivery_radius}
-            onChange={(event) =>
-              updateForm({ delivery_radius: event.target.value })
-            }
-            style={input}
-          />
+          <div className="mt-5 grid gap-4">
+            <Field label="Delivery radius">
+              <input
+                type="number"
+                step="0.1"
+                value={form.delivery_radius}
+                onChange={(event) =>
+                  updateForm({ delivery_radius: event.target.value })
+                }
+                className={inputClass}
+              />
+            </Field>
 
-          <label style={label}>Delivery fee</label>
-          <input
-            type="number"
-            step="0.01"
-            value={form.delivery_fee}
-            onChange={(event) => updateForm({ delivery_fee: event.target.value })}
-            style={input}
-          />
+            <Field label="Delivery fee">
+              <input
+                type="number"
+                step="0.01"
+                value={form.delivery_fee}
+                onChange={(event) =>
+                  updateForm({ delivery_fee: event.target.value })
+                }
+                className={inputClass}
+              />
+            </Field>
 
-          <label style={label}>Free delivery threshold</label>
-          <input
-            type="number"
-            step="0.01"
-            value={form.free_delivery_threshold}
-            onChange={(event) =>
-              updateForm({ free_delivery_threshold: event.target.value })
-            }
-            style={input}
-          />
+            <Field label="Free delivery threshold">
+              <input
+                type="number"
+                step="0.01"
+                value={form.free_delivery_threshold}
+                onChange={(event) =>
+                  updateForm({ free_delivery_threshold: event.target.value })
+                }
+                className={inputClass}
+              />
+            </Field>
 
-          <label style={label}>Default prep time</label>
-          <input
-            type="number"
-            step="1"
-            value={form.default_prep_time}
-            onChange={(event) =>
-              updateForm({ default_prep_time: event.target.value })
-            }
-            style={input}
-          />
-        </div>
+            <Field label="Default prep time">
+              <input
+                type="number"
+                step="1"
+                value={form.default_prep_time}
+                onChange={(event) =>
+                  updateForm({ default_prep_time: event.target.value })
+                }
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        </GlowCard>
 
-        <div style={panel}>
-          <h2 style={cardTitle}>Payments and AI</h2>
+        <GlowCard className="p-5 xl:col-span-2">
+          <h2 className="text-2xl font-black text-white">Payments and AI</h2>
 
-          <label style={checkboxLabel}>
-            <input
-              type="checkbox"
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <Toggle
+              label="Cash on delivery enabled"
               checked={form.cash_on_delivery_enabled}
-              onChange={(event) =>
-                updateForm({ cash_on_delivery_enabled: event.target.checked })
+              onChange={(checked) =>
+                updateForm({ cash_on_delivery_enabled: checked })
               }
             />
-            Cash on delivery enabled
-          </label>
-
-          <label style={checkboxLabel}>
-            <input
-              type="checkbox"
+            <Toggle
+              label="Stripe enabled"
               checked={form.stripe_enabled}
-              onChange={(event) =>
-                updateForm({ stripe_enabled: event.target.checked })
-              }
+              onChange={(checked) => updateForm({ stripe_enabled: checked })}
             />
-            Stripe enabled
-          </label>
+          </div>
 
-          <label style={label}>AI greeting message</label>
-          <textarea
-            value={form.ai_greeting_message}
-            onChange={(event) =>
-              updateForm({ ai_greeting_message: event.target.value })
-            }
-            style={textarea}
-            rows={5}
-          />
-        </div>
+          <div className="mt-5">
+            <Field label="AI greeting message">
+              <textarea
+                value={form.ai_greeting_message}
+                onChange={(event) =>
+                  updateForm({ ai_greeting_message: event.target.value })
+                }
+                className={`${inputClass} min-h-32 resize-y`}
+              />
+            </Field>
+          </div>
+        </GlowCard>
       </section>
     </form>
   )
 }
 
-const formLayout: React.CSSProperties = {
-  display: 'grid',
-  gap: 18,
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-bold text-slate-200">
+      {label}
+      {children}
+    </label>
+  )
 }
 
-const panel: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #e2e8f0',
-  borderRadius: 22,
-  padding: 24,
-  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
+function Toggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm font-bold text-slate-200">
+      {label}
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-5 w-5 accent-violet-400"
+      />
+    </label>
+  )
 }
 
-const sectionHeader: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 16,
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
-const eyebrow: React.CSSProperties = {
-  color: '#075985',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  fontWeight: 900,
-  fontSize: 12,
-  margin: 0,
-}
-
-const title: React.CSSProperties = {
-  color: '#020617',
-  margin: '8px 0',
-}
-
-const muted: React.CSSProperties = {
-  color: '#64748b',
-  lineHeight: 1.5,
-  margin: 0,
-}
-
-const grid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-  gap: 18,
-}
-
-const cardTitle: React.CSSProperties = {
-  color: '#020617',
-  marginTop: 0,
-}
-
-const label: React.CSSProperties = {
-  display: 'block',
-  fontWeight: 800,
-  fontSize: 13,
-  color: '#0f172a',
-  marginBottom: 6,
-  marginTop: 12,
-}
-
-const input: React.CSSProperties = {
-  width: '100%',
-  padding: 12,
-  borderRadius: 12,
-  border: '1px solid #cbd5e1',
-  fontSize: 15,
-  boxSizing: 'border-box',
-}
-
-const textarea: React.CSSProperties = {
-  ...input,
-  resize: 'vertical',
-}
-
-const checkboxLabel: React.CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  alignItems: 'center',
-  fontWeight: 800,
-  color: '#0f172a',
-  marginTop: 14,
-}
-
-const primaryButton: React.CSSProperties = {
-  padding: '11px 14px',
-  background: '#020617',
-  color: 'white',
-  border: 'none',
-  borderRadius: 12,
-  cursor: 'pointer',
-  fontWeight: 900,
-}
-
-const notice: React.CSSProperties = {
-  color: '#64748b',
-}
-
-const successText: React.CSSProperties = {
-  color: '#166534',
-  background: '#dcfce7',
-  border: '1px solid #bbf7d0',
-  borderRadius: 12,
-  padding: 12,
-  marginBottom: 0,
-}
-
-const errorText: React.CSSProperties = {
-  color: '#991b1b',
-  background: '#fee2e2',
-  border: '1px solid #fecaca',
-  borderRadius: 12,
-  padding: 12,
-  marginBottom: 0,
-}
+const inputClass =
+  'w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none transition placeholder:text-slate-600 focus:border-violet-300/50'
