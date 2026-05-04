@@ -28,6 +28,12 @@ type SettingsForm = {
   shopify_last_sync_at: string
 }
 
+type ShopifySyncResult = {
+  imported: number
+  updated: number
+  errors: string[]
+}
+
 const emptyForm: SettingsForm = {
   name: '',
   business_type: 'restaurant',
@@ -60,10 +66,13 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testingShopify, setTestingShopify] = useState(false)
+  const [syncingShopify, setSyncingShopify] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [shopifyMessage, setShopifyMessage] = useState('')
   const [shopifyError, setShopifyError] = useState('')
+  const [shopifySyncResult, setShopifySyncResult] =
+    useState<ShopifySyncResult | null>(null)
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -136,6 +145,7 @@ export default function SettingsPage() {
     setError('')
     setShopifyMessage('')
     setShopifyError('')
+    setShopifySyncResult(null)
 
     const authHeaders = await getAuthHeaders()
 
@@ -185,6 +195,7 @@ export default function SettingsPage() {
     setTestingShopify(true)
     setShopifyMessage('')
     setShopifyError('')
+    setShopifySyncResult(null)
     setMessage('')
     setError('')
 
@@ -236,6 +247,62 @@ export default function SettingsPage() {
 
     updateForm({ shopify_connected: false })
     setShopifyError(data.message || 'Failed to test Shopify connection')
+  }
+
+  const syncShopifyProducts = async () => {
+    setSyncingShopify(true)
+    setShopifyMessage('')
+    setShopifyError('')
+    setShopifySyncResult(null)
+    setMessage('')
+    setError('')
+
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      router.replace('/login')
+      return
+    }
+
+    const res = await fetch(
+      `/api/businesses/${businessId}/shopify/sync-products`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+      }
+    )
+    const data = await res.json()
+
+    setSyncingShopify(false)
+
+    if (data.success) {
+      updateForm({
+        shopify_connected: true,
+        shopify_last_sync_at: data.shopify_last_sync_at || '',
+      })
+      setShopifySyncResult({
+        imported: Number(data.imported || 0),
+        updated: Number(data.updated || 0),
+        errors: data.errors || [],
+      })
+      setShopifyMessage('Shopify product sync completed.')
+      return
+    }
+
+    if (res.status === 401) {
+      router.replace('/login')
+      return
+    }
+
+    if (res.status === 403) {
+      router.replace('/app/businesses')
+      return
+    }
+
+    setShopifyError(data.message || 'Failed to sync Shopify products')
   }
 
   if (loading) {
@@ -352,7 +419,7 @@ export default function SettingsPage() {
             />
             {form.shopify_last_sync_at ? (
               <span className="text-sm text-slate-500">
-                Last tested {formatDate(form.shopify_last_sync_at)}
+                Last sync {formatDate(form.shopify_last_sync_at)}
               </span>
             ) : null}
           </div>
@@ -392,14 +459,22 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={testShopifyConnection}
-              disabled={testingShopify}
+              disabled={testingShopify || syncingShopify}
               className="rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-5 py-3 text-sm font-black text-cyan-100 transition hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {testingShopify ? 'Testing...' : 'Test Connection'}
             </button>
             <button
+              type="button"
+              onClick={syncShopifyProducts}
+              disabled={syncingShopify || testingShopify}
+              className="rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {syncingShopify ? 'Syncing...' : 'Sync Shopify Products'}
+            </button>
+            <button
               type="submit"
-              disabled={saving}
+              disabled={saving || syncingShopify}
               className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Save Shopify Fields
@@ -416,10 +491,46 @@ export default function SettingsPage() {
               {shopifyError}
             </p>
           )}
+          {shopifySyncResult && (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-sm font-semibold text-slate-400">
+                    Imported
+                  </p>
+                  <p className="mt-1 text-3xl font-black text-white">
+                    {shopifySyncResult.imported}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-400">
+                    Updated
+                  </p>
+                  <p className="mt-1 text-3xl font-black text-white">
+                    {shopifySyncResult.updated}
+                  </p>
+                </div>
+              </div>
+
+              {shopifySyncResult.errors.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4">
+                  <p className="text-sm font-black text-amber-100">
+                    Sync warnings
+                  </p>
+                  <ul className="mt-3 grid gap-2 text-sm text-amber-100">
+                    {shopifySyncResult.errors.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
 
           <p className="mt-5 text-sm leading-6 text-slate-500">
-            Phase 1 only connects and verifies the Shopify store. Product sync
-            is intentionally not enabled yet.
+            Shopify sync imports active products into this business menu and
+            updates existing Shopify-linked products by variant ID. Manual menu
+            products stay untouched.
           </p>
         </GlowCard>
 
