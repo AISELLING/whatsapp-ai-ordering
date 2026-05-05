@@ -311,16 +311,28 @@ export default function SettingsPage() {
       }
     )
     const data = await res.json()
+    console.log('Shopify sync response', data)
 
     setStartingSync(false)
 
-    if (data.success) {
-      setSyncJob(data.job)
+    if (data.success && data.jobId) {
+      setSyncJob({
+        id: data.jobId,
+        status: 'queued',
+        processed_products: 0,
+        processed_variants: 0,
+        imported_count: 0,
+        updated_count: 0,
+        skipped_count: 0,
+        failed_count: 0,
+        warning_count: 0,
+        warnings: [],
+        started_at: new Date().toISOString(),
+      })
       setShopifyMessage(
-        data.already_running
-          ? 'A Shopify sync is already running.'
-          : 'Shopify sync started.'
+        'Shopify sync job created. Polling job status now.'
       )
+      pollSyncJob(data.jobId)
       return
     }
 
