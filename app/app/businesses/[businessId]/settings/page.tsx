@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { GlowCard, StatusBadge } from '@/components/tek9'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
@@ -28,10 +28,24 @@ type SettingsForm = {
   shopify_last_sync_at: string
 }
 
-type ShopifySyncResult = {
-  imported: number
-  updated: number
-  errors: string[]
+type ShopifySyncJob = {
+  id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  total_products?: number
+  total_variants?: number
+  processed_products?: number
+  processed_variants?: number
+  imported_count?: number
+  updated_count?: number
+  skipped_count?: number
+  failed_count?: number
+  warning_count?: number
+  warnings?: string[]
+  error_message?: string
+  started_at?: string
+  completed_at?: string
+  created_at?: string
+  updated_at?: string
 }
 
 const emptyForm: SettingsForm = {
@@ -66,13 +80,28 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testingShopify, setTestingShopify] = useState(false)
-  const [syncingShopify, setSyncingShopify] = useState(false)
+  const [startingSync, setStartingSync] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [shopifyMessage, setShopifyMessage] = useState('')
   const [shopifyError, setShopifyError] = useState('')
-  const [shopifySyncResult, setShopifySyncResult] =
-    useState<ShopifySyncResult | null>(null)
+  const [syncJob, setSyncJob] = useState<ShopifySyncJob | null>(null)
+
+  const syncIsRunning =
+    syncJob?.status === 'queued' || syncJob?.status === 'running'
+
+  const progressPercent = useMemo(() => {
+    if (!syncJob) return 0
+
+    const totalProducts = Number(syncJob.total_products || 0)
+    const processedProducts = Number(syncJob.processed_products || 0)
+
+    if (totalProducts <= 0) {
+      return syncIsRunning ? 12 : syncJob.status === 'completed' ? 100 : 0
+    }
+
+    return Math.min(100, Math.round((processedProducts / totalProducts) * 100))
+  }, [syncJob, syncIsRunning])
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -134,6 +163,16 @@ export default function SettingsPage() {
     loadSettings()
   }, [businessId, router])
 
+  useEffect(() => {
+    if (!syncJob?.id || !syncIsRunning) return
+
+    const interval = window.setInterval(() => {
+      pollSyncJob(syncJob.id)
+    }, 1500)
+
+    return () => window.clearInterval(interval)
+  }, [syncJob?.id, syncIsRunning])
+
   const updateForm = (updates: Partial<SettingsForm>) => {
     setForm((current) => ({ ...current, ...updates }))
   }
@@ -145,7 +184,6 @@ export default function SettingsPage() {
     setError('')
     setShopifyMessage('')
     setShopifyError('')
-    setShopifySyncResult(null)
 
     const authHeaders = await getAuthHeaders()
 
@@ -195,7 +233,6 @@ export default function SettingsPage() {
     setTestingShopify(true)
     setShopifyMessage('')
     setShopifyError('')
-    setShopifySyncResult(null)
     setMessage('')
     setError('')
 
@@ -249,11 +286,10 @@ export default function SettingsPage() {
     setShopifyError(data.message || 'Failed to test Shopify connection')
   }
 
-  const syncShopifyProducts = async () => {
-    setSyncingShopify(true)
+  const startShopifySync = async () => {
+    setStartingSync(true)
     setShopifyMessage('')
     setShopifyError('')
-    setShopifySyncResult(null)
     setMessage('')
     setError('')
 
@@ -276,19 +312,15 @@ export default function SettingsPage() {
     )
     const data = await res.json()
 
-    setSyncingShopify(false)
+    setStartingSync(false)
 
     if (data.success) {
-      updateForm({
-        shopify_connected: true,
-        shopify_last_sync_at: data.shopify_last_sync_at || '',
-      })
-      setShopifySyncResult({
-        imported: Number(data.imported || 0),
-        updated: Number(data.updated || 0),
-        errors: data.errors || [],
-      })
-      setShopifyMessage('Shopify product sync completed.')
+      setSyncJob(data.job)
+      setShopifyMessage(
+        data.already_running
+          ? 'A Shopify sync is already running.'
+          : 'Shopify sync started.'
+      )
       return
     }
 
@@ -302,7 +334,41 @@ export default function SettingsPage() {
       return
     }
 
-    setShopifyError(data.message || 'Failed to sync Shopify products')
+    setShopifyError(data.message || 'Failed to start Shopify sync')
+  }
+
+  const pollSyncJob = async (jobId: string) => {
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      router.replace('/login')
+      return
+    }
+
+    const res = await fetch(
+      `/api/businesses/${businessId}/shopify/sync-jobs/${jobId}`,
+      {
+        cache: 'no-store',
+        headers: authHeaders,
+      }
+    )
+    const data = await res.json()
+
+    if (data.success) {
+      setSyncJob(data.job)
+
+      if (data.job.status === 'completed') {
+        setShopifyMessage('Shopify sync completed.')
+        updateForm({
+          shopify_connected: true,
+          shopify_last_sync_at: data.job.completed_at || form.shopify_last_sync_at,
+        })
+      }
+
+      if (data.job.status === 'failed') {
+        setShopifyError(data.job.error_message || 'Shopify sync failed.')
+      }
+    }
   }
 
   if (loading) {
@@ -459,22 +525,28 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={testShopifyConnection}
-              disabled={testingShopify || syncingShopify}
+              disabled={testingShopify || syncIsRunning || startingSync}
               className="rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-5 py-3 text-sm font-black text-cyan-100 transition hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {testingShopify ? 'Testing...' : 'Test Connection'}
             </button>
             <button
               type="button"
-              onClick={syncShopifyProducts}
-              disabled={syncingShopify || testingShopify}
+              onClick={startShopifySync}
+              disabled={syncIsRunning || startingSync || testingShopify}
               className="rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {syncingShopify ? 'Syncing...' : 'Sync Shopify Products'}
+              {syncIsRunning
+                ? 'Sync Running...'
+                : startingSync
+                  ? 'Starting...'
+                  : syncJob?.status === 'failed'
+                    ? 'Retry Shopify Sync'
+                    : 'Sync Shopify Products'}
             </button>
             <button
               type="submit"
-              disabled={saving || syncingShopify}
+              disabled={saving || syncIsRunning}
               className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-black text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Save Shopify Fields
@@ -491,34 +563,84 @@ export default function SettingsPage() {
               {shopifyError}
             </p>
           )}
-          {shopifySyncResult && (
+
+          {syncJob && (
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-400">
-                    Imported
+                    Sync status
                   </p>
-                  <p className="mt-1 text-3xl font-black text-white">
-                    {shopifySyncResult.imported}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-400">
-                    Updated
-                  </p>
-                  <p className="mt-1 text-3xl font-black text-white">
-                    {shopifySyncResult.updated}
+                  <p className="mt-1 text-xl font-black capitalize text-white">
+                    {syncJob.status}
                   </p>
                 </div>
+                <StatusBadge status={syncJob.status} />
               </div>
 
-              {shopifySyncResult.errors.length > 0 && (
+              <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-violet-400 to-cyan-300 transition-all"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <p className="mt-2 text-sm text-slate-400">
+                {progressPercent}% complete
+              </p>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <SyncMetric
+                  label="Processed products"
+                  value={syncJob.processed_products || 0}
+                  suffix={
+                    syncJob.total_products ? ` / ${syncJob.total_products}` : ''
+                  }
+                />
+                <SyncMetric
+                  label="Processed variants"
+                  value={syncJob.processed_variants || 0}
+                  suffix={
+                    syncJob.total_variants ? ` / ${syncJob.total_variants}` : ''
+                  }
+                />
+                <SyncMetric
+                  label="Imported"
+                  value={syncJob.imported_count || 0}
+                />
+                <SyncMetric
+                  label="Updated"
+                  value={syncJob.updated_count || 0}
+                />
+                <SyncMetric
+                  label="Skipped"
+                  value={syncJob.skipped_count || 0}
+                />
+                <SyncMetric label="Failed" value={syncJob.failed_count || 0} />
+                <SyncMetric
+                  label="Warnings"
+                  value={syncJob.warning_count || 0}
+                />
+                <SyncMetric
+                  label="Started"
+                  value={
+                    syncJob.started_at ? formatShortTime(syncJob.started_at) : '-'
+                  }
+                />
+              </div>
+
+              {syncJob.error_message && (
+                <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 p-4 text-sm text-rose-100">
+                  {syncJob.error_message}
+                </div>
+              )}
+
+              {(syncJob.warnings || []).length > 0 && (
                 <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4">
                   <p className="text-sm font-black text-amber-100">
                     Sync warnings
                   </p>
-                  <ul className="mt-3 grid gap-2 text-sm text-amber-100">
-                    {shopifySyncResult.errors.map((item) => (
+                  <ul className="mt-3 grid max-h-48 gap-2 overflow-auto text-sm text-amber-100">
+                    {(syncJob.warnings || []).map((item) => (
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
@@ -528,8 +650,8 @@ export default function SettingsPage() {
           )}
 
           <p className="mt-5 text-sm leading-6 text-slate-500">
-            Shopify sync imports active products into this business menu and
-            updates existing Shopify-linked products by variant ID. Manual menu
+            Shopify sync imports every Shopify variant as one sellable product
+            and updates existing Shopify-linked rows by variant ID. Manual menu
             products stay untouched.
           </p>
         </GlowCard>
@@ -697,11 +819,38 @@ function Toggle({
   )
 }
 
+function SyncMetric({
+  label,
+  value,
+  suffix = '',
+}: {
+  label: string
+  value: string | number
+  suffix?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <p className="mt-1 text-xl font-black text-white">
+        {value}
+        {suffix && <span className="text-sm text-slate-500">{suffix}</span>}
+      </p>
+    </div>
+  )
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function formatShortTime(value: string) {
+  return new Intl.DateTimeFormat('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))

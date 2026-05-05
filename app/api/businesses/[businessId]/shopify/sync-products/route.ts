@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { requireBusinessAccess } from '@/lib/apiSecurity'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 const SHOPIFY_API_VERSION = '2026-04'
+const SHOPIFY_PAGE_LIMIT = 250
+const MAX_WARNINGS_TO_STORE = 100
 
 type RouteContext = {
   params: Promise<{
@@ -15,7 +17,10 @@ type ShopifyProduct = {
   title?: string
   body_html?: string
   product_type?: string
+  handle?: string
+  vendor?: string
   status?: string
+  tags?: string
   variants?: ShopifyVariant[]
   images?: ShopifyImage[]
   image?: ShopifyImage | null
@@ -23,12 +28,27 @@ type ShopifyProduct = {
 
 type ShopifyVariant = {
   id: number | string
+  title?: string
   price?: string
   sku?: string
+  inventory_item_id?: number | string
+  inventory_policy?: string
 }
 
 type ShopifyImage = {
   src?: string
+}
+
+type SyncJob = {
+  id: string
+  business_id: string
+  status: string
+  imported_count: number
+  updated_count: number
+  skipped_count: number
+  failed_count: number
+  warning_count: number
+  warnings: string[]
 }
 
 export async function POST(req: Request, context: RouteContext) {
@@ -38,6 +58,30 @@ export async function POST(req: Request, context: RouteContext) {
 
     if (!access.ok) {
       return access.response
+    }
+
+    const { data: activeJob, error: activeJobError } = await supabaseAdmin
+      .from('shopify_sync_jobs')
+      .select('*')
+      .eq('business_id', businessId)
+      .in('status', ['queued', 'running'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (activeJobError) {
+      return NextResponse.json(
+        { error: true, message: activeJobError.message },
+        { status: 500 }
+      )
+    }
+
+    if (activeJob) {
+      return NextResponse.json({
+        success: true,
+        job: activeJob,
+        already_running: true,
+      })
     }
 
     const { data: business, error: businessError } = await supabaseAdmin
@@ -58,145 +102,342 @@ export async function POST(req: Request, context: RouteContext) {
 
     if (!shopDomain || !accessToken) {
       return NextResponse.json(
-        {
-          error: true,
-          message: 'Connect Shopify before syncing products',
-        },
+        { error: true, message: 'Connect Shopify before syncing products' },
         { status: 400 }
       )
     }
 
     if (!isAllowedShopifyDomain(shopDomain)) {
       return NextResponse.json(
-        {
-          error: true,
-          message: 'Use a valid myshopify.com shop domain',
-        },
+        { error: true, message: 'Use a valid myshopify.com shop domain' },
         { status: 400 }
       )
     }
 
-    const products = await fetchShopifyProducts(shopDomain, accessToken)
-    const errors: string[] = []
-    let imported = 0
-    let updated = 0
-
-    for (const product of products) {
-      const firstVariant = product.variants?.[0]
-      const shopifyVariantId = firstVariant?.id
-
-      if (!product.id || !shopifyVariantId) {
-        errors.push(
-          `${product.title || 'Untitled product'} skipped: missing product or variant id`
-        )
-        continue
-      }
-
-      const payload = {
+    const now = new Date().toISOString()
+    const { data: job, error: jobError } = await supabaseAdmin
+      .from('shopify_sync_jobs')
+      .insert({
         business_id: businessId,
-        name: product.title || 'Untitled Shopify Product',
-        description: stripHtml(product.body_html || ''),
-        category: product.product_type || '',
-        price: Number(firstVariant.price || 0),
-        sku: firstVariant.sku || '',
-        shopify_product_id: String(product.id),
-        shopify_variant_id: String(shopifyVariantId),
-        image_url: product.images?.[0]?.src || product.image?.src || '',
-        is_available: product.status === 'active',
-      }
+        requested_by: access.user.id,
+        status: 'queued',
+        sync_type: 'products',
+        warnings: [],
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single()
 
-      const { data: existingProduct, error: lookupError } = await supabaseAdmin
-        .from('products')
-        .select('id')
-        .eq('business_id', businessId)
-        .eq('shopify_variant_id', payload.shopify_variant_id)
-        .maybeSingle()
-
-      if (lookupError) {
-        errors.push(`${payload.name}: ${lookupError.message}`)
-        continue
-      }
-
-      const result = existingProduct
-        ? await supabaseAdmin
-            .from('products')
-            .update(payload)
-            .eq('id', existingProduct.id)
-            .eq('business_id', businessId)
-        : await supabaseAdmin.from('products').insert(payload)
-
-      if (result.error) {
-        errors.push(`${payload.name}: ${result.error.message}`)
-        continue
-      }
-
-      if (existingProduct) {
-        updated += 1
-      } else {
-        imported += 1
-      }
+    if (jobError) {
+      return NextResponse.json(
+        { error: true, message: jobError.message },
+        { status: 500 }
+      )
     }
 
-    const lastSyncAt = new Date().toISOString()
-
-    await supabaseAdmin
-      .from('businesses')
-      .update({
-        shopify_connected: true,
-        shopify_last_sync_at: lastSyncAt,
+    after(async () => {
+      await runShopifyProductSync({
+        jobId: job.id,
+        businessId,
+        shopDomain,
+        accessToken,
       })
-      .eq('id', businessId)
+    })
 
     return NextResponse.json({
       success: true,
-      imported,
-      updated,
-      errors,
-      shopify_last_sync_at: lastSyncAt,
+      job,
+      already_running: false,
     })
   } catch (error: any) {
     return NextResponse.json(
       {
         error: true,
-        message: error.message || 'Failed to sync Shopify products',
+        message: error.message || 'Failed to start Shopify product sync',
       },
       { status: 500 }
     )
   }
 }
 
-async function fetchShopifyProducts(shopDomain: string, accessToken: string) {
-  const products: ShopifyProduct[] = []
-  let nextUrl: string | null =
-    `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250`
-  let pagesFetched = 0
+async function runShopifyProductSync({
+  jobId,
+  businessId,
+  shopDomain,
+  accessToken,
+}: {
+  jobId: string
+  businessId: string
+  shopDomain: string
+  accessToken: string
+}) {
+  const startedAt = new Date().toISOString()
 
-  while (nextUrl && pagesFetched < 10) {
-    const res = await fetch(nextUrl, {
+  try {
+    await updateJob(jobId, {
+      status: 'running',
+      started_at: startedAt,
+      updated_at: startedAt,
+    })
+
+    const totalProducts = await fetchShopifyProductCount(shopDomain, accessToken)
+    await updateJob(jobId, {
+      total_products: totalProducts,
+      updated_at: new Date().toISOString(),
+    })
+
+    let nextUrl: string | null =
+      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=${SHOPIFY_PAGE_LIMIT}`
+    const warnings: string[] = []
+    let imported = 0
+    let updated = 0
+    let skipped = 0
+    let failed = 0
+    let processedProducts = 0
+    let processedVariants = 0
+    let totalVariants = 0
+
+    while (nextUrl) {
+      const page = await fetchShopifyProductPage(nextUrl, accessToken)
+      const products = page.products
+      nextUrl = page.nextUrl
+
+      for (const product of products) {
+        processedProducts += 1
+
+        const variants = product.variants || []
+        totalVariants += variants.length
+
+        if (!product.id || variants.length === 0) {
+          skipped += 1
+          pushWarning(
+            warnings,
+            `${product.title || 'Untitled product'} skipped: no variants`
+          )
+          continue
+        }
+
+        for (const variant of variants) {
+          processedVariants += 1
+
+          if (!variant.id) {
+            skipped += 1
+            pushWarning(
+              warnings,
+              `${product.title || 'Untitled product'} skipped: variant missing id`
+            )
+            continue
+          }
+
+          const payload = buildProductPayload({
+            businessId,
+            product,
+            variant,
+          })
+
+          const { data: existingProduct, error: lookupError } =
+            await supabaseAdmin
+              .from('products')
+              .select('id')
+              .eq('business_id', businessId)
+              .eq('shopify_variant_id', payload.shopify_variant_id)
+              .maybeSingle()
+
+          if (lookupError) {
+            failed += 1
+            pushWarning(warnings, `${payload.name}: ${lookupError.message}`)
+            continue
+          }
+
+          const result = existingProduct
+            ? await supabaseAdmin
+                .from('products')
+                .update(payload)
+                .eq('id', existingProduct.id)
+                .eq('business_id', businessId)
+            : await supabaseAdmin.from('products').insert(payload)
+
+          if (result.error) {
+            failed += 1
+            pushWarning(warnings, `${payload.name}: ${result.error.message}`)
+            continue
+          }
+
+          if (existingProduct) {
+            updated += 1
+          } else {
+            imported += 1
+          }
+        }
+      }
+
+      await updateJob(jobId, {
+        cursor: nextUrl,
+        processed_products: processedProducts,
+        processed_variants: processedVariants,
+        total_variants: totalVariants,
+        imported_count: imported,
+        updated_count: updated,
+        skipped_count: skipped,
+        failed_count: failed,
+        warning_count: warnings.length,
+        warnings,
+        updated_at: new Date().toISOString(),
+      })
+    }
+
+    const completedAt = new Date().toISOString()
+    await updateJob(jobId, {
+      status: failed > 0 ? 'completed' : 'completed',
+      cursor: null,
+      processed_products: processedProducts,
+      processed_variants: processedVariants,
+      total_variants: totalVariants,
+      imported_count: imported,
+      updated_count: updated,
+      skipped_count: skipped,
+      failed_count: failed,
+      warning_count: warnings.length,
+      warnings,
+      completed_at: completedAt,
+      updated_at: completedAt,
+    })
+
+    await supabaseAdmin
+      .from('businesses')
+      .update({
+        shopify_connected: true,
+        shopify_last_sync_at: completedAt,
+      })
+      .eq('id', businessId)
+  } catch (error: any) {
+    const failedAt = new Date().toISOString()
+    await updateJob(jobId, {
+      status: 'failed',
+      error_message: error.message || 'Shopify sync failed',
+      completed_at: failedAt,
+      updated_at: failedAt,
+    })
+  }
+}
+
+function buildProductPayload({
+  businessId,
+  product,
+  variant,
+}: {
+  businessId: string
+  product: ShopifyProduct
+  variant: ShopifyVariant
+}) {
+  const variantTitle = variant.title || ''
+  const isDefaultVariant = !variantTitle || variantTitle === 'Default Title'
+  const productTitle = product.title || 'Untitled Shopify Product'
+  const syncedAt = new Date().toISOString()
+
+  return {
+    business_id: businessId,
+    source: 'shopify',
+    name: isDefaultVariant ? productTitle : `${productTitle} - ${variantTitle}`,
+    description: stripHtml(product.body_html || ''),
+    category: product.product_type || '',
+    price: Number(variant.price || 0),
+    sku: variant.sku || '',
+    shopify_product_id: String(product.id),
+    shopify_variant_id: String(variant.id),
+    shopify_inventory_item_id: variant.inventory_item_id
+      ? String(variant.inventory_item_id)
+      : '',
+    shopify_product_title: productTitle,
+    shopify_variant_title: variantTitle,
+    shopify_handle: product.handle || '',
+    shopify_vendor: product.vendor || '',
+    shopify_product_type: product.product_type || '',
+    shopify_status: product.status || '',
+    shopify_tags: product.tags || '',
+    image_url: product.images?.[0]?.src || product.image?.src || '',
+    inventory_policy: variant.inventory_policy || '',
+    is_available: product.status === 'active',
+    shopify_synced_at: syncedAt,
+    shopify_last_seen_at: syncedAt,
+    sync_hash: createSyncHash({
+      title: productTitle,
+      variantTitle,
+      description: product.body_html || '',
+      productType: product.product_type || '',
+      price: variant.price || '',
+      sku: variant.sku || '',
+      status: product.status || '',
+      image: product.images?.[0]?.src || product.image?.src || '',
+    }),
+  }
+}
+
+async function fetchShopifyProductCount(
+  shopDomain: string,
+  accessToken: string
+) {
+  const res = await fetch(
+    `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/products/count.json`,
+    {
       cache: 'no-store',
       headers: {
         Accept: 'application/json',
         'X-Shopify-Access-Token': accessToken,
       },
-    })
-
-    const text = await res.text()
-    const json = safeJson(text)
-
-    if (!res.ok) {
-      throw new Error(
-        json?.errors ||
-          json?.error ||
-          `Shopify product fetch failed with status ${res.status}`
-      )
     }
+  )
 
-    products.push(...((json?.products || []) as ShopifyProduct[]))
-    nextUrl = getNextPageUrl(res.headers.get('link'))
-    pagesFetched += 1
+  if (!res.ok) {
+    return 0
   }
 
-  return products
+  const json = await res.json().catch(() => null)
+  return Number(json?.count || 0)
+}
+
+async function fetchShopifyProductPage(url: string, accessToken: string) {
+  const res = await fetch(url, {
+    cache: 'no-store',
+    headers: {
+      Accept: 'application/json',
+      'X-Shopify-Access-Token': accessToken,
+    },
+  })
+
+  const text = await res.text()
+  const json = safeJson(text)
+
+  if (!res.ok) {
+    throw new Error(
+      json?.errors ||
+        json?.error ||
+        `Shopify product fetch failed with status ${res.status}`
+    )
+  }
+
+  return {
+    products: (json?.products || []) as ShopifyProduct[],
+    nextUrl: getNextPageUrl(res.headers.get('link')),
+  }
+}
+
+async function updateJob(jobId: string, updates: Record<string, any>) {
+  const { error } = await supabaseAdmin
+    .from('shopify_sync_jobs')
+    .update(updates)
+    .eq('id', jobId)
+
+  if (error) {
+    throw error
+  }
+}
+
+function pushWarning(warnings: string[], warning: string) {
+  if (warnings.length < MAX_WARNINGS_TO_STORE) {
+    warnings.push(warning)
+  }
 }
 
 function getNextPageUrl(linkHeader: string | null) {
@@ -253,6 +494,10 @@ function stripHtml(value: string) {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function createSyncHash(value: Record<string, string>) {
+  return JSON.stringify(value)
 }
 
 function safeJson(value: string) {
