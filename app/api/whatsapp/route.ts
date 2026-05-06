@@ -122,6 +122,8 @@ async function parseMessage(message: string): Promise<ParsedOrder | ParsedBookin
       {
         role: 'system',
         content: `
+You must respond with valid JSON only.
+
 Menu:
 ${JSON.stringify(products)}
 
