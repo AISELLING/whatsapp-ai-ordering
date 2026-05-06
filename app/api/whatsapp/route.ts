@@ -110,33 +110,17 @@ export async function POST(req: Request) {
 }
 
 async function parseMessage(message: string): Promise<ParsedOrder | ParsedBooking> {
-  const { data: products } = await supabaseAdmin
-    .from('products')
-    .select('*')
-    .eq('business_id', BUSINESS_ID)
-
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    response_format: { type: 'json_object' },
-    messages: [
-      {
-        role: 'system',
-        content: `
+  if (looksLikeBookingMessage(message)) {
+    const bookingCompletion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `
 You must respond with valid JSON only.
-
-Menu:
-${JSON.stringify(products)}
-
-If this is an order, return:
-{
-  "type":"order",
-  "intent":"create_order",
-  "items":[{"name":"","quantity":1,"unit_price":0,"line_total":0,"notes":""}],
-  "subtotal":0,
-  "order_type":"collection"
-}
-
-If this is a booking request, return:
+Extract booking request details from the customer message.
+Return:
 {
   "type":"booking",
   "intent":"booking",
@@ -148,6 +132,51 @@ If this is a booking request, return:
   "time":"",
   "notes":""
 }
+          `,
+        },
+        { role: 'user', content: message },
+      ],
+    })
+
+    return JSON.parse(bookingCompletion.choices[0].message.content || '{}')
+  }
+
+  const { data: products } = await supabaseAdmin
+    .from('products')
+    .select('name, price, category, is_available')
+    .eq('business_id', BUSINESS_ID)
+    .eq('is_available', true)
+    .limit(100)
+
+  const menuLines = (products || [])
+    .map((product) => {
+      const name = String(product.name || '').trim()
+      const price = Number(product.price || 0).toFixed(2)
+      const category = String(product.category || 'Uncategorised').trim()
+      return `- ${name} | £${price} | ${category}`
+    })
+    .join('\n')
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `
+You must respond with valid JSON only.
+You are parsing a food/product order for a UK business.
+Use only items from this menu:
+${menuLines || '- No menu items available'}
+
+Return:
+{
+  "type":"order",
+  "intent":"create_order",
+  "items":[{"name":"","quantity":1,"unit_price":0,"line_total":0,"notes":""}],
+  "subtotal":0,
+  "order_type":"collection"
+}
         `,
       },
       { role: 'user', content: message },
@@ -155,6 +184,25 @@ If this is a booking request, return:
   })
 
   return JSON.parse(completion.choices[0].message.content || '{}')
+}
+
+function looksLikeBookingMessage(message: string) {
+  const lower = message.toLowerCase()
+  const keywords = [
+    'book',
+    'booking',
+    'appointment',
+    'groom',
+    'grooming',
+    'slot',
+    'schedule',
+    'available time',
+    'availability',
+    'dog',
+    'puppy',
+  ]
+
+  return keywords.some((keyword) => lower.includes(keyword))
 }
 
 async function createOrder(parsed: ParsedOrder, phone: string, profileName: string) {
