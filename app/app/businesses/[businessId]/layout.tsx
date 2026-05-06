@@ -16,6 +16,7 @@ const navigation = [
   ['Dashboard', 'dashboard'],
   ['Orders', 'orders'],
   ['Bookings', 'bookings'],
+  ['Integrations', 'integrations'],
   ['Menu', 'menu'],
   ['Import Menu', 'menu/import'],
   ['AI Settings', 'ai-settings'],
