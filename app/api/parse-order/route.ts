@@ -9,12 +9,29 @@ const openai = new OpenAI({
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const message = body.message
+    const message = String(body.message || '').trim()
+    const businessId =
+      typeof body.business_id === 'string' && body.business_id
+        ? body.business_id
+        : null
 
-    const { data: products, error } = await supabaseAdmin
+    if (!message) {
+      return NextResponse.json(
+        { error: true, message: 'message is required' },
+        { status: 400 }
+      )
+    }
+
+    let productQuery = supabaseAdmin
       .from('products')
       .select('name, description, price, category, is_available')
       .eq('is_available', true)
+
+    if (businessId) {
+      productQuery = productQuery.eq('business_id', businessId)
+    }
+
+    const { data: products, error } = await productQuery
 
     if (error) {
       return NextResponse.json(
@@ -32,30 +49,14 @@ export async function POST(req: Request) {
         {
           role: 'system',
           content: `
-You are an expert AI ordering assistant for a UK food business.
+You are an expert AI assistant for UK businesses.
 
 LIVE BUSINESS MENU:
 ${menuText}
 
-RULES:
-- Currency is GBP only. Use £ in customer replies, never $.
-- Only use items from the LIVE BUSINESS MENU.
-- Do not invent products, prices, discounts, offers, delivery fees, opening times, or policies.
-- Extract product name, quantity, unit_price, line_total, and notes.
-- Notes should include modifications like "no onions", "extra sauce", etc.
-- Calculate subtotal correctly.
-- If customer says delivery or collection, capture it in order_type.
-- order_type must be either "delivery", "collection", or "".
-- If delivery/collection is missing, add "delivery_or_collection" to missing_info.
-- If customer requests an unavailable item, add it to unavailable_items and do not include it in items.
-- If no valid menu items are found, set intent to "unknown_or_question".
-- Always write a short helpful reply to the customer.
-- If order is complete, ask them to confirm before payment.
-- The reply must always include the subtotal formatted as GBP when there are valid items.
-- Return valid JSON only.
-
-RETURN EXACT JSON STRUCTURE:
+If the message is an order, return EXACTLY:
 {
+  "type": "order",
   "intent": "create_order",
   "items": [
     {
@@ -72,6 +73,25 @@ RETURN EXACT JSON STRUCTURE:
   "subtotal": 0,
   "reply": ""
 }
+
+If the message is a booking request (for example grooming, appointments, time slots), return EXACTLY:
+{
+  "type": "booking",
+  "intent": "booking",
+  "customer_name": "",
+  "service": "",
+  "dog_breed": "",
+  "dog_size": "",
+  "date": "",
+  "time": "",
+  "notes": "",
+  "reply": ""
+}
+
+Rules:
+- Use only valid JSON.
+- For orders, only use items in LIVE BUSINESS MENU.
+- For bookings, extract as much detail as available.
           `,
         },
         {
@@ -84,7 +104,33 @@ RETURN EXACT JSON STRUCTURE:
     const aiResponse = completion.choices[0].message.content || '{}'
     const parsed = JSON.parse(aiResponse)
 
-    return NextResponse.json(parsed)
+    if (parsed.intent === 'booking' || parsed.type === 'booking') {
+      return NextResponse.json({
+        type: 'booking',
+        intent: 'booking',
+        customer_name: parsed.customer_name || '',
+        service: parsed.service || '',
+        dog_breed: parsed.dog_breed || '',
+        dog_size: parsed.dog_size || '',
+        date: parsed.date || '',
+        time: parsed.time || '',
+        notes: parsed.notes || '',
+        reply: parsed.reply || '',
+      })
+    }
+
+    return NextResponse.json({
+      type: 'order',
+      intent: parsed.intent || 'create_order',
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+      unavailable_items: Array.isArray(parsed.unavailable_items)
+        ? parsed.unavailable_items
+        : [],
+      order_type: parsed.order_type || '',
+      missing_info: Array.isArray(parsed.missing_info) ? parsed.missing_info : [],
+      subtotal: Number(parsed.subtotal || 0),
+      reply: parsed.reply || '',
+    })
   } catch (error: any) {
     return NextResponse.json(
       {

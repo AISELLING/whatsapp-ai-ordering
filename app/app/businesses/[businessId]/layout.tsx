@@ -15,6 +15,7 @@ type Business = {
 const navigation = [
   ['Dashboard', 'dashboard'],
   ['Orders', 'orders'],
+  ['Bookings', 'bookings'],
   ['Menu', 'menu'],
   ['Import Menu', 'menu/import'],
   ['AI Settings', 'ai-settings'],

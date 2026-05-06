@@ -5,8 +5,33 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 
-// 🔥 IMPORTANT: PASTE YOUR BUSINESS ID HERE
-const BUSINESS_ID = 'PASTE_YOUR_BUSINESS_ID_HERE'
+const BUSINESS_ID = '181e3724-b538-4bc5-b5f0-0bf5daa0191c'
+
+type ParsedOrder = {
+  type?: 'order' | 'booking'
+  intent?: string
+  items?: Array<{
+    name?: string
+    quantity?: number
+    unit_price?: number
+    line_total?: number
+    notes?: string
+  }>
+  subtotal?: number
+  order_type?: string
+}
+
+type ParsedBooking = {
+  type?: 'order' | 'booking'
+  intent?: string
+  customer_name?: string
+  service?: string
+  dog_breed?: string
+  dog_size?: string
+  date?: string
+  time?: string
+  notes?: string
+}
 
 function getBaseUrl() {
   if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL
@@ -25,10 +50,9 @@ export async function POST(req: Request) {
     const lower = message.toLowerCase()
 
     if (!message) {
-      return twiml('Hey 👋 What can I get you today?')
+      return twiml('Hey! What can I get you today?')
     }
 
-    // 🔥 GET CUSTOMER (NOW LOCKED TO BUSINESS)
     const { data: customer } = await supabaseAdmin
       .from('customers')
       .select('*')
@@ -36,9 +60,6 @@ export async function POST(req: Request) {
       .eq('business_id', BUSINESS_ID)
       .maybeSingle()
 
-    // =========================
-    // 🔥 USUAL FLOW
-    // =========================
     const wantsUsual =
       lower.includes('usual') ||
       lower.includes('same again') ||
@@ -46,32 +67,49 @@ export async function POST(req: Request) {
 
     if (wantsUsual) {
       if (!customer?.usual_order) {
-        return twiml("I don’t know your usual yet. Order once 👍")
+        return twiml("I don't know your usual yet. Order once first.")
       }
 
       return createOrder(customer.usual_order, customerPhone, profileName)
     }
 
-    // =========================
-    // 🧠 AI PARSE ORDER
-    // =========================
-    const parsed = await parseOrder(message)
+    const parsed = await parseMessage(message)
+    const isBooking = parsed.intent === 'booking' || parsed.type === 'booking'
 
-    if (!parsed.items || parsed.items.length === 0) {
-      return twiml('Sorry, I didn’t understand that.')
+    if (isBooking) {
+      const booking = parsed as ParsedBooking
+
+      await supabaseAdmin.from('bookings').insert({
+        business_id: BUSINESS_ID,
+        customer_phone: customerPhone,
+        customer_name: booking.customer_name || profileName || '',
+        service: booking.service || '',
+        dog_breed: booking.dog_breed || '',
+        dog_size: booking.dog_size || '',
+        requested_date: booking.date || '',
+        requested_time: booking.time || '',
+        notes: booking.notes || '',
+        status: 'pending',
+      })
+
+      return twiml(
+        "Thanks, your booking request has been received. We'll confirm shortly."
+      )
     }
 
-    return createOrder(parsed, customerPhone, profileName)
+    const order = parsed as ParsedOrder
 
+    if (!Array.isArray(order.items) || order.items.length === 0) {
+      return twiml("Sorry, I didn't understand that.")
+    }
+
+    return createOrder(order, customerPhone, profileName)
   } catch (err: any) {
     return twiml(`Error: ${err.message}`)
   }
 }
 
-// =========================
-// 🧠 PARSE ORDER (BUSINESS LOCKED)
-// =========================
-async function parseOrder(message: string) {
+async function parseMessage(message: string): Promise<ParsedOrder | ParsedBooking> {
   const { data: products } = await supabaseAdmin
     .from('products')
     .select('*')
@@ -87,11 +125,26 @@ async function parseOrder(message: string) {
 Menu:
 ${JSON.stringify(products)}
 
-Return JSON:
+If this is an order, return:
 {
-  "items": [{"name":"","quantity":1,"unit_price":0,"line_total":0}],
+  "type":"order",
+  "intent":"create_order",
+  "items":[{"name":"","quantity":1,"unit_price":0,"line_total":0,"notes":""}],
   "subtotal":0,
   "order_type":"collection"
+}
+
+If this is a booking request, return:
+{
+  "type":"booking",
+  "intent":"booking",
+  "customer_name":"",
+  "service":"",
+  "dog_breed":"",
+  "dog_size":"",
+  "date":"",
+  "time":"",
+  "notes":""
 }
         `,
       },
@@ -102,13 +155,10 @@ Return JSON:
   return JSON.parse(completion.choices[0].message.content || '{}')
 }
 
-// =========================
-// 💳 CREATE ORDER
-// =========================
-async function createOrder(parsed: any, phone: string, profileName: string) {
-
-  const orderType =
-    parsed.order_type === 'delivery' ? 'delivery' : 'collection'
+async function createOrder(parsed: ParsedOrder, phone: string, profileName: string) {
+  const items = Array.isArray(parsed.items) ? parsed.items : []
+  const orderType = parsed.order_type === 'delivery' ? 'delivery' : 'collection'
+  const subtotal = Number(parsed.subtotal || 0)
 
   const { data: order } = await supabaseAdmin
     .from('orders')
@@ -116,8 +166,8 @@ async function createOrder(parsed: any, phone: string, profileName: string) {
       business_id: BUSINESS_ID,
       customer_phone: phone,
       customer_profile_name: profileName,
-      items: parsed.items,
-      subtotal: parsed.subtotal,
+      items,
+      subtotal,
       order_type: orderType,
       payment_status: 'pending',
     })
@@ -126,13 +176,13 @@ async function createOrder(parsed: any, phone: string, profileName: string) {
 
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
-    line_items: parsed.items.map((i: any) => ({
+    line_items: items.map((item) => ({
       price_data: {
         currency: 'gbp',
-        product_data: { name: i.name },
-        unit_amount: Math.round(i.unit_price * 100),
+        product_data: { name: item.name || 'Item' },
+        unit_amount: Math.round(Number(item.unit_price || 0) * 100),
       },
-      quantity: i.quantity,
+      quantity: Number(item.quantity || 1),
     })),
     success_url: `${getBaseUrl()}/success`,
     cancel_url: `${getBaseUrl()}/cancel`,
@@ -144,27 +194,33 @@ async function createOrder(parsed: any, phone: string, profileName: string) {
     .update({ stripe_checkout_url: session.url })
     .eq('id', order.id)
 
-  const summary = parsed.items
-    .map((i: any) => `${i.quantity} x ${i.name}`)
+  const summary = items
+    .map((item) => `${Number(item.quantity || 1)} x ${item.name || 'Item'}`)
     .join('\n')
 
   const typeLine =
     orderType === 'delivery'
-      ? 'We’ll get that delivered 🚚'
-      : 'Ready for collection 👍'
+      ? "We'll get that delivered."
+      : 'Ready for collection.'
 
   return twiml(
-    `Nice one 👌\n\n${summary}\n\n${typeLine}\nTotal: £${parsed.subtotal}\n\nPay here:\n${session.url}`
+    `Nice one.\n\n${summary}\n\n${typeLine}\nTotal: £${subtotal.toFixed(2)}\n\nPay here:\n${session.url}`
   )
 }
 
-// =========================
-// 📲 TWILIO RESPONSE
-// =========================
 function twiml(message: string) {
   return new Response(
     `<?xml version="1.0" encoding="UTF-8"?>
-<Response><Message>${message}</Message></Response>`,
+<Response><Message>${escapeXml(message)}</Message></Response>`,
     { headers: { 'Content-Type': 'text/xml' } }
   )
+}
+
+function escapeXml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
 }
