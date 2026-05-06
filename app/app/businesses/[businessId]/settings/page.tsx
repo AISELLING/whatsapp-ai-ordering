@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { GlowCard, StatusBadge } from '@/components/tek9'
 import { getAuthHeaders } from '@/lib/supabaseBrowser'
@@ -86,6 +86,7 @@ export default function SettingsPage() {
   const [shopifyMessage, setShopifyMessage] = useState('')
   const [shopifyError, setShopifyError] = useState('')
   const [syncJob, setSyncJob] = useState<ShopifySyncJob | null>(null)
+  const syncTickInFlight = useRef(false)
 
   const syncIsRunning =
     syncJob?.status === 'queued' || syncJob?.status === 'running'
@@ -164,12 +165,53 @@ export default function SettingsPage() {
   }, [businessId, router])
 
   useEffect(() => {
-    if (!syncJob?.id || !syncIsRunning) return
+    if (!syncJob?.id || !syncIsRunning) {
+      return
+    }
 
-    const interval = window.setInterval(() => {
-      pollSyncJob(syncJob.id)
-    }, 1500)
+    const tick = async () => {
+      if (syncTickInFlight.current) {
+        return
+      }
 
+      syncTickInFlight.current = true
+      try {
+        const latest = await fetchSyncJob(syncJob.id)
+
+        if (!latest) {
+          return
+        }
+
+        setSyncJob(latest)
+
+        if (latest.status === 'queued' || latest.status === 'running') {
+          await processNextSyncChunk(latest.id)
+          const afterChunk = await fetchSyncJob(latest.id)
+
+          if (afterChunk) {
+            setSyncJob(afterChunk)
+            if (afterChunk.status === 'completed') {
+              setShopifyMessage('Shopify sync completed.')
+              setForm((current) => ({
+                ...current,
+                shopify_connected: true,
+                shopify_last_sync_at:
+                  afterChunk.completed_at || current.shopify_last_sync_at,
+              }))
+            }
+
+            if (afterChunk.status === 'failed') {
+              setShopifyError(afterChunk.error_message || 'Shopify sync failed.')
+            }
+          }
+        }
+      } finally {
+        syncTickInFlight.current = false
+      }
+    }
+
+    tick()
+    const interval = window.setInterval(tick, 1800)
     return () => window.clearInterval(interval)
   }, [syncJob?.id, syncIsRunning])
 
@@ -330,9 +372,10 @@ export default function SettingsPage() {
         started_at: new Date().toISOString(),
       })
       setShopifyMessage(
-        'Shopify sync job created. Polling job status now.'
+        data.alreadyRunning
+          ? 'An existing Shopify sync resumed.'
+          : 'Shopify sync job created. Processing pages...'
       )
-      pollSyncJob(data.jobId)
       return
     }
 
@@ -349,12 +392,12 @@ export default function SettingsPage() {
     setShopifyError(data.message || 'Failed to start Shopify sync')
   }
 
-  const pollSyncJob = async (jobId: string) => {
+  const fetchSyncJob = async (jobId: string): Promise<ShopifySyncJob | null> => {
     const authHeaders = await getAuthHeaders()
 
     if (!authHeaders) {
       router.replace('/login')
-      return
+      return null
     }
 
     const res = await fetch(
@@ -367,19 +410,42 @@ export default function SettingsPage() {
     const data = await res.json()
 
     if (data.success) {
-      setSyncJob(data.job)
+      return data.job as ShopifySyncJob
+    }
 
-      if (data.job.status === 'completed') {
-        setShopifyMessage('Shopify sync completed.')
-        updateForm({
-          shopify_connected: true,
-          shopify_last_sync_at: data.job.completed_at || form.shopify_last_sync_at,
-        })
-      }
+    if (res.status === 401) {
+      router.replace('/login')
+    }
 
-      if (data.job.status === 'failed') {
-        setShopifyError(data.job.error_message || 'Shopify sync failed.')
+    if (res.status === 403) {
+      router.replace('/app/businesses')
+    }
+
+    return null
+  }
+
+  const processNextSyncChunk = async (jobId: string) => {
+    const authHeaders = await getAuthHeaders()
+
+    if (!authHeaders) {
+      router.replace('/login')
+      return
+    }
+
+    const res = await fetch(
+      `/api/businesses/${businessId}/shopify/sync-jobs/${jobId}/process-next`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
       }
+    )
+    const data = await res.json()
+
+    if (!data.success && data.error) {
+      setShopifyError(data.message || 'Failed to process Shopify sync chunk')
     }
   }
 
