@@ -5,7 +5,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 
-const BUSINESS_ID = '0f733eea-d3fe-497f-8d4c-11d04006843e'
+const BUSINESS_ID = '9a3325d2-72aa-4647-a7c8-584859c2b624'
 
 type ParsedOrder = {
   type?: 'order' | 'booking'
