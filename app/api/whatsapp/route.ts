@@ -53,6 +53,22 @@ export async function POST(req: Request) {
       return twiml('Hey! What can I get you today?')
     }
 
+    if (looksLikeBroadProductRequest(message)) {
+      const suggestions = await getProductSuggestions(message)
+
+      if (suggestions.length > 0) {
+        return twiml(
+          `Got it. Here are some options:\n${formatSuggestions(
+            suggestions
+          )}\n\nReply with the exact product name and quantity (for example: 2 x Cellucor C4 390g).`
+        )
+      }
+
+      return twiml(
+        'Got it. Please tell me the exact product name and quantity you want.'
+      )
+    }
+
     const { data: customer } = await supabaseAdmin
       .from('customers')
       .select('*')
@@ -186,6 +202,52 @@ Return:
   return JSON.parse(completion.choices[0].message.content || '{}')
 }
 
+async function getProductSuggestions(message: string) {
+  const term = getBestSearchTerm(message)
+
+  if (!term) return []
+
+  const safeTerm = term.replaceAll('%', '').replaceAll(',', ' ').trim()
+
+  if (!safeTerm) return []
+
+  const { data } = await supabaseAdmin
+    .from('products')
+    .select('name, price, category')
+    .eq('business_id', BUSINESS_ID)
+    .eq('is_available', true)
+    .or(`name.ilike.%${safeTerm}%,category.ilike.%${safeTerm}%`)
+    .order('name', { ascending: true })
+    .limit(6)
+
+  return data || []
+}
+
+function formatSuggestions(
+  suggestions: Array<{ name?: string; price?: number; category?: string }>
+) {
+  return suggestions
+    .map((item, index) => {
+      const name = item.name || 'Product'
+      const price = Number(item.price || 0).toFixed(2)
+      const category = item.category ? ` (${item.category})` : ''
+      return `${index + 1}. ${name}${category} - £${price}`
+    })
+    .join('\n')
+}
+
+function getBestSearchTerm(message: string) {
+  const tokens = message
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((token) => !COMMON_STOPWORDS.has(token))
+
+  const preferred = tokens.find((token) => BROAD_KEYWORDS.has(token))
+  return preferred || tokens[0] || ''
+}
+
 function looksLikeBookingMessage(message: string) {
   const lower = message.toLowerCase()
   const keywords = [
@@ -204,6 +266,60 @@ function looksLikeBookingMessage(message: string) {
 
   return keywords.some((keyword) => lower.includes(keyword))
 }
+
+function looksLikeBroadProductRequest(message: string) {
+  const lower = message.toLowerCase()
+  const hasQuantity = /\b\d+\b/.test(lower) || /\b(x|qty|quantity)\b/.test(lower)
+  if (hasQuantity) return false
+
+  if (looksLikeBookingMessage(message)) return false
+
+  const hasBroadKeyword = Array.from(BROAD_KEYWORDS).some((keyword) =>
+    lower.includes(keyword)
+  )
+
+  if (!hasBroadKeyword) return false
+
+  const tokenCount = lower
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean).length
+
+  return tokenCount <= 6
+}
+
+const BROAD_KEYWORDS = new Set([
+  'cellucor',
+  'protein',
+  'creatine',
+  'preworkout',
+  'pre-workout',
+  'whey',
+  'mass',
+  'gainer',
+  'supplement',
+  'supplements',
+  'bcaa',
+  'vitamin',
+])
+
+const COMMON_STOPWORDS = new Set([
+  'i',
+  'want',
+  'need',
+  'some',
+  'a',
+  'an',
+  'the',
+  'please',
+  'for',
+  'with',
+  'to',
+  'buy',
+  'get',
+  'order',
+  'of',
+])
 
 async function createOrder(parsed: ParsedOrder, phone: string, profileName: string) {
   const items = Array.isArray(parsed.items) ? parsed.items : []
